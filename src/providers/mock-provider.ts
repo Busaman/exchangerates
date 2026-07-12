@@ -5,7 +5,9 @@ import {
   type Provider,
   type QuoteRequest,
 } from "@/domain/quote";
+import { formatMockDecimal } from "@/domain/decimal";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
+import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 
 export const mockProvider: Provider = { id: "mock-fintech", name: "Demo Fintech" };
 
@@ -13,10 +15,6 @@ const rates: Readonly<Record<string, number>> = {
   "EUR-HUF": 392.5,
   "HUF-EUR": 0.00249,
 };
-
-function decimal(value: number, digits: number): string {
-  return value.toFixed(digits).replace(/\.?0+$/, "");
-}
 
 export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
   const request = quoteRequestSchema.parse(requestInput);
@@ -39,14 +37,20 @@ export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
       targetCurrency: request.targetCurrency,
     },
     direction: "SELL_SOURCE_BUY_TARGET",
-    sourceAmount: { currency: request.sourceCurrency, amount: decimal(sourceAmount, 2) },
+    sourceAmount: {
+      currency: request.sourceCurrency,
+      amount: formatMockDecimal(sourceAmount, 2),
+    },
     targetAmount: {
       currency: request.targetCurrency,
-      amount: decimal(targetAmount, request.targetCurrency === "HUF" ? 0 : 2),
+      amount: formatMockDecimal(targetAmount, request.targetCurrency === "HUF" ? 0 : 2),
     },
-    effectiveRate: decimal(targetAmount / sourceAmount, 8),
-    explicitFee: { currency: request.sourceCurrency, amount: decimal(fee, 2) },
-    totalCost: { currency: request.sourceCurrency, amount: decimal(fee, 2) },
+    effectiveRate: formatMockDecimal(targetAmount / sourceAmount, 8),
+    explicitFee: {
+      currency: request.sourceCurrency,
+      amount: formatMockDecimal(fee, 2),
+    },
+    totalCost: { currency: request.sourceCurrency, amount: formatMockDecimal(fee, 2) },
     rateTimestamp: request.requestedAt,
     retrievedAt: request.requestedAt,
     sourceType: "MOCK",
@@ -62,7 +66,16 @@ export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
 export class MockProviderAdapter implements ProviderAdapter {
   readonly provider = mockProvider;
 
-  async getQuote(request: QuoteRequest): Promise<AvailableQuote> {
-    return Promise.resolve(createMockQuote(request));
+  async getQuote(request: QuoteRequest) {
+    try {
+      return await Promise.resolve(createMockQuote(request));
+    } catch {
+      return createProviderUnavailableResult({
+        provider: this.provider,
+        request,
+        reason: `The deterministic mock does not support ${request.sourceCurrency}/${request.targetCurrency}.`,
+        sourceId: "deterministic-foundation-v1-unavailable",
+      });
+    }
   }
 }

@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { CurrencyCode, QuoteResult } from "@/domain/quote";
+import {
+  supportedCurrencyCodeSchema,
+  type QuoteResult,
+  type SupportedCurrencyCode,
+} from "@/domain/quote";
+import { normalizeDemoAmount } from "@/components/comparison-input";
 import { createMockQuote, mockProvider } from "@/providers/mock-provider";
 import { createUnavailableQuote, unavailableProvider } from "@/providers/unavailable-provider";
 
@@ -25,26 +30,42 @@ function labelForStatus(result: QuoteResult): string {
 }
 
 export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
-  const [sourceCurrency, setSourceCurrency] = useState<CurrencyCode>("EUR");
-  const [targetCurrency, setTargetCurrency] = useState<CurrencyCode>("HUF");
+  const [sourceCurrency, setSourceCurrency] = useState<SupportedCurrencyCode>("EUR");
+  const [targetCurrency, setTargetCurrency] = useState<SupportedCurrencyCode>("HUF");
   const [amount, setAmount] = useState("1000");
-
-  const results = useMemo<QuoteResult[]>(() => {
-    const numericAmount = Number(amount);
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) return [];
+  const comparison = useMemo<{ results: QuoteResult[]; message: string }>(() => {
+    const normalizedAmount = normalizeDemoAmount(amount);
+    if (normalizedAmount === null) {
+      return {
+        results: [],
+        message: "Adj meg 0,01 és 1 000 000 000 000 közötti összeget, legfeljebb két tizedessel.",
+      };
+    }
 
     const baseRequest = {
       sourceCurrency,
       targetCurrency,
-      sourceAmount: numericAmount.toFixed(2),
+      sourceAmount: normalizedAmount,
       requestedAt: generatedAt,
     };
 
-    return [
-      createMockQuote({ ...baseRequest, providerId: mockProvider.id }),
-      createUnavailableQuote({ ...baseRequest, providerId: unavailableProvider.id }),
-    ];
+    try {
+      return {
+        results: [
+          createMockQuote({ ...baseRequest, providerId: mockProvider.id }),
+          createUnavailableQuote({ ...baseRequest, providerId: unavailableProvider.id }),
+        ],
+        message: "",
+      };
+    } catch {
+      return {
+        results: [],
+        message: "A mock összehasonlítás ehhez az összeghez nem készíthető el.",
+      };
+    }
   }, [amount, generatedAt, sourceCurrency, targetCurrency]);
+
+  const results = comparison.results;
 
   function swapCurrencies() {
     setSourceCurrency(targetCurrency);
@@ -77,7 +98,7 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
             <select
               value={sourceCurrency}
               onChange={(event) => {
-                const next = event.target.value as CurrencyCode;
+                const next = supportedCurrencyCodeSchema.parse(event.target.value);
                 setSourceCurrency(next);
                 if (next === targetCurrency) setTargetCurrency(next === "EUR" ? "HUF" : "EUR");
               }}
@@ -103,7 +124,7 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
             <select
               value={targetCurrency}
               onChange={(event) => {
-                const next = event.target.value as CurrencyCode;
+                const next = supportedCurrencyCodeSchema.parse(event.target.value);
                 setTargetCurrency(next);
                 if (next === sourceCurrency) setSourceCurrency(next === "EUR" ? "HUF" : "EUR");
               }}
@@ -131,7 +152,7 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
           </label>
         </div>
         <p id="amount-help" className="mt-2 min-h-5 text-sm text-rose-300" role="status">
-          {results.length === 0 ? "Adj meg nullánál nagyobb, érvényes összeget." : ""}
+          {comparison.message}
         </p>
       </div>
 

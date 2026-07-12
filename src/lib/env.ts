@@ -6,11 +6,15 @@ const runtimeEnvSchema = z.object({
 });
 
 const databaseEnvSchema = runtimeEnvSchema.extend({
-  DATABASE_URL: z.string().url().startsWith("postgres"),
+  DATABASE_URL: z.url().startsWith("postgres"),
 });
 
-export function getRuntimeEnv() {
-  return runtimeEnvSchema.parse(process.env);
+type RuntimeEnv = z.infer<typeof runtimeEnvSchema>;
+let cachedRuntimeEnv: RuntimeEnv | undefined;
+
+export function getRuntimeEnv(): RuntimeEnv {
+  cachedRuntimeEnv ??= runtimeEnvSchema.parse(process.env);
+  return cachedRuntimeEnv;
 }
 
 export function getDatabaseEnv() {

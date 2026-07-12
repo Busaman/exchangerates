@@ -47,6 +47,9 @@ Quotes keep source/target currency, source and resulting amounts, effective rate
 total cost, provider plan, rate and retrieval timestamps, source identifiers, data status, freshness
 and reliability. Directions are independent; EUR/HUF and HUF/EUR are never inferred from each other.
 Real financial arithmetic must use decimal arithmetic, not JavaScript `number`.
+In the foundation mock, `totalCost` equals the explicit fee because no verified reference spread is
+available. Future spread-derived cost must be stored as a separately named component before it can
+be included in `totalCost`, with the cost currency and methodology documented.
 
 ## Cache and update strategy
 
@@ -73,8 +76,10 @@ source type plus a stale status.
 
 ## Errors, observability and security
 
-Expected provider failures are typed results; programmer/infrastructure failures use structured
-errors and JSON logs with request/provider context but no credentials or raw sensitive payloads.
+Expected provider failures are typed results. The comparison service isolates unexpected adapter
+failures into unavailable results while emitting structured error logs with request/provider context
+but no credentials or raw sensitive payloads; request/schema failures outside an adapter still fail
+the request rather than being mislabeled as provider unavailability.
 Future production telemetry should measure adapter latency, success rate, quote age, cache behavior
 and direction-specific anomalies. Rate-limit public APIs, validate all inputs, use least-privilege DB
 credentials, keep secrets in deployment environment variables, pin/scan dependencies, and apply

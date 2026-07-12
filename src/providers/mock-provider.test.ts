@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMockQuote } from "@/providers/mock-provider";
+import { createMockQuote, MockProviderAdapter } from "@/providers/mock-provider";
 
 describe("createMockQuote", () => {
   it("returns a deterministic, explicitly mocked EUR/HUF quote", () => {
@@ -28,5 +28,30 @@ describe("createMockQuote", () => {
 
     expect(quote.effectiveRate).toBe("0.00248253");
     expect(quote.targetAmount.currency).toBe("EUR");
+  });
+
+  it("preserves significant zeroes in integer target amounts", () => {
+    const quote = createMockQuote({
+      providerId: "mock-fintech",
+      sourceCurrency: "EUR",
+      targetCurrency: "HUF",
+      sourceAmount: "1000.02",
+      requestedAt: "2026-01-01T12:00:00.000Z",
+    });
+
+    expect(quote.targetAmount.amount).toBe("391330");
+  });
+
+  it("returns unavailable instead of throwing for an unsupported pair", async () => {
+    const result = await new MockProviderAdapter().getQuote({
+      providerId: "mock-fintech",
+      sourceCurrency: "USD",
+      targetCurrency: "EUR",
+      sourceAmount: "1000",
+      requestedAt: "2026-01-01T12:00:00.000Z",
+    });
+
+    expect(result.kind).toBe("unavailable");
+    expect(result).not.toHaveProperty("targetAmount");
   });
 });

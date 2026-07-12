@@ -5,6 +5,7 @@ const decimalStringSchema = z
   .regex(/^(0|[1-9]\d*)(\.\d+)?$/, "Expected a non-negative decimal string");
 
 export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/);
+export const supportedCurrencyCodeSchema = z.enum(["EUR", "HUF"]);
 export const quoteSourceTypeSchema = z.enum([
   "LIVE_OFFICIAL",
   "LIVE_UNOFFICIAL",
@@ -40,7 +41,7 @@ export const quoteRequestSchema = currencyPairSchema.extend({
     message: "Source amount must be greater than zero",
   }),
   customerPlan: z.string().min(1).optional(),
-  requestedAt: z.string().datetime(),
+  requestedAt: z.iso.datetime(),
 });
 
 export const availableQuoteSchema = z.object({
@@ -53,14 +54,14 @@ export const availableQuoteSchema = z.object({
   effectiveRate: decimalStringSchema,
   explicitFee: monetaryAmountSchema,
   totalCost: monetaryAmountSchema,
-  rateTimestamp: z.string().datetime(),
-  retrievedAt: z.string().datetime(),
+  rateTimestamp: z.iso.datetime(),
+  retrievedAt: z.iso.datetime(),
   sourceType: quoteSourceTypeSchema,
   status: z.enum(["AVAILABLE", "STALE"]),
   freshness: freshnessSchema,
   reliability: reliabilitySchema,
   sourceId: z.string().min(1).optional(),
-  sourceUrl: z.string().url().optional(),
+  sourceUrl: z.url().optional(),
   customerPlan: z.string().min(1).optional(),
   disclaimer: z.string().min(1).optional(),
 });
@@ -72,7 +73,7 @@ export const unavailableQuoteSchema = z.object({
   status: z.literal("UNAVAILABLE"),
   freshness: z.literal("UNKNOWN"),
   reliability: z.literal("NOT_APPLICABLE"),
-  retrievedAt: z.string().datetime(),
+  retrievedAt: z.iso.datetime(),
   reason: z.string().min(1),
   sourceId: z.string().min(1).optional(),
 });
@@ -83,6 +84,7 @@ export const quoteResultSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type CurrencyCode = z.infer<typeof currencyCodeSchema>;
+export type SupportedCurrencyCode = z.infer<typeof supportedCurrencyCodeSchema>;
 export type Provider = z.infer<typeof providerSchema>;
 export type QuoteRequest = z.infer<typeof quoteRequestSchema>;
 export type AvailableQuote = z.infer<typeof availableQuoteSchema>;

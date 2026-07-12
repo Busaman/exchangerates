@@ -7,8 +7,9 @@ Prisma schema, unit test tooling, health endpoint and transparent initial UI.
 
 ## 2. Domain model and mocked providers — in progress
 
-The normalized quote union, deterministic mock, unavailable example and basic tests exist. Next,
-finish contract test utilities, decimal calculation primitives, adapter registry and quote API.
+The normalized quote union, deterministic mock, unavailable example, exact decimal comparison,
+adapter failure isolation and regression tests exist. Next, finish decimal calculation primitives,
+contract test utilities, adapter registry and quote API.
 
 ## 3. Official or legally reliable provider integrations — planned
 

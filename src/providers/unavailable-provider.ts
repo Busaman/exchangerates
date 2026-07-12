@@ -1,28 +1,20 @@
 import {
   quoteRequestSchema,
-  unavailableQuoteSchema,
   type Provider,
   type QuoteRequest,
   type UnavailableQuote,
 } from "@/domain/quote";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
+import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 
 export const unavailableProvider: Provider = { id: "wise", name: "Wise" };
 
 export function createUnavailableQuote(requestInput: QuoteRequest): UnavailableQuote {
   const request = quoteRequestSchema.parse(requestInput);
 
-  return unavailableQuoteSchema.parse({
-    kind: "unavailable",
+  return createProviderUnavailableResult({
     provider: unavailableProvider,
-    pair: {
-      sourceCurrency: request.sourceCurrency,
-      targetCurrency: request.targetCurrency,
-    },
-    status: "UNAVAILABLE",
-    freshness: "UNKNOWN",
-    reliability: "NOT_APPLICABLE",
-    retrievedAt: request.requestedAt,
+    request,
     reason: "No verified provider integration is configured in the foundation phase.",
     sourceId: "foundation-unavailable-example",
   });

@@ -55,3 +55,12 @@ only be served with explicit `STALE` status and visible age under an approved pr
 The foundation implements only a deterministic mock and unavailable example. Do not scrape,
 reverse-engineer or speculate about provider endpoints. A future adapter requires an official or
 otherwise legally reliable source, documented approval and contract fixtures.
+
+## ADR-008 — Exact comparison and adapter failure isolation
+
+**Status:** Accepted (2026-07-12)
+
+Compare normalized decimal strings without conversion to JavaScript `number`. Expected provider
+failures return unavailable results directly; the comparison service also isolates unexpected
+adapter exceptions, logs them, and returns a numeric-field-free unavailable result for that provider
+so one integration cannot erase valid quotes from other providers.
