@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SourceType {
+  LIVE_OFFICIAL
+  LIVE_UNOFFICIAL
+  ESTIMATED
+  MOCK
+}
+
+enum DataStatus {
+  AVAILABLE
+  UNAVAILABLE
+  STALE
+}
+
+enum Freshness {
+  FRESH
+  AGING
+  STALE
+  UNKNOWN
+}
+
+enum Reliability {
+  VERIFIED
+  HIGH
+  MEDIUM
+  LOW
+  NOT_APPLICABLE
+}
+
+enum ExchangeDirection {
+  SELL_SOURCE_BUY_TARGET
+}
+
+model Provider {
+  id           String                     @id
+  name         String
+  enabled      Boolean                    @default(false)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  plans        ProviderPlan[]
+  quotes       QuoteSnapshot[]
+  observations ProviderAvailabilityEvent[]
+}
+
+model ProviderPlan {
+  id         String          @id @default(cuid())
+  providerId String
+  code       String
+  name       String
+  provider   Provider        @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  quotes     QuoteSnapshot[]
+
+  @@unique([providerId, code])
+}
+
+model CurrencyPair {
+  id             String                     @id @default(cuid())
+  sourceCurrency String                     @db.Char(3)
+  targetCurrency String                     @db.Char(3)
+  active         Boolean                    @default(true)
+  quotes         QuoteSnapshot[]
+  observations   ProviderAvailabilityEvent[]
+
+  @@unique([sourceCurrency, targetCurrency])
+}
+
+// Only available or stale numeric quotes belong here. Unavailable observations are
+// stored separately so they can never acquire misleading placeholder amounts.
+model QuoteSnapshot {
+  id             String            @id @default(cuid())
+  providerId     String
+  providerPlanId String?
+  currencyPairId String
+  direction      ExchangeDirection @default(SELL_SOURCE_BUY_TARGET)
+  sourceAmount   Decimal           @db.Decimal(30, 12)
+  targetAmount   Decimal           @db.Decimal(30, 12)
+  effectiveRate  Decimal           @db.Decimal(30, 12)
+  explicitFee    Decimal           @db.Decimal(30, 12)
+  totalCost      Decimal           @db.Decimal(30, 12)
+  sourceType     SourceType
+  status         DataStatus
+  freshness      Freshness
+  reliability    Reliability
+  rateTimestamp  DateTime
+  retrievedAt    DateTime
+  sourceId       String?
+  sourceUrl      String?
+  rawPayload     Json?
+  createdAt      DateTime          @default(now())
+  provider       Provider          @relation(fields: [providerId], references: [id])
+  providerPlan   ProviderPlan?     @relation(fields: [providerPlanId], references: [id])
+  currencyPair   CurrencyPair      @relation(fields: [currencyPairId], references: [id])
+
+  @@index([currencyPairId, retrievedAt])
+  @@index([providerId, currencyPairId, retrievedAt])
+}
+
+model ProviderAvailabilityEvent {
+  id             String          @id @default(cuid())
+  providerId     String
+  currencyPairId String
+  status         DataStatus
+  reason         String
+  retrievedAt    DateTime
+  sourceId       String?
+  createdAt      DateTime        @default(now())
+  provider       Provider        @relation(fields: [providerId], references: [id])
+  currencyPair   CurrencyPair    @relation(fields: [currencyPairId], references: [id])
+
+  @@index([providerId, currencyPairId, retrievedAt])
+}
