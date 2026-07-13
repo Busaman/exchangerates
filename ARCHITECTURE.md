@@ -52,10 +52,11 @@ registry registration—quote orchestration and ranking contain no provider-spec
 Quotes keep source/target currency, source and resulting amounts, effective rate, explicit fee,
 total cost, provider plan, rate and retrieval timestamps, source identifiers, data status, freshness
 and reliability. Directions are independent; EUR/HUF and HUF/EUR are never inferred from each other.
-Real financial arithmetic uses decimal.js with 40-digit precision and `ROUND_HALF_UP`, never
-JavaScript `number`. Source values remain decimal strings. Fees round to source-currency scale,
-target values to target-currency scale, and effective rates to 8 decimal places. The currently
-supported currency scales are EUR 2 and HUF 0.
+Financial arithmetic uses decimal.js with 40-digit precision, never JavaScript `number`. Source
+values remain decimal strings. The deterministic mock uses `ROUND_HALF_UP`: fees round to
+source-currency scale, target values to target-currency scale, and effective rates to 8 decimal
+places. The currently supported currency scales are EUR 2 and HUF 0. A real adapter must reproduce
+its provider's documented rounding behavior instead of inheriting the mock policy.
 In the foundation mock, `totalCost` equals the explicit fee because no verified reference spread is
 available. Future spread-derived cost must be stored as a separately named component before it can
 be included in `totalCost`, with the cost currency and methodology documented.
@@ -83,9 +84,10 @@ include provenance/status timestamps. `LIVE_OFFICIAL` means documented provider-
 `MOCK` is development/test only. `UNAVAILABLE` has no numeric values. `STALE` retains the original
 source type plus a stale status.
 
-`POST /api/v1/quotes` validates a strict request, resolves selected adapters through the registry,
+`POST /api/v1/quotes` validates a strict request, including a 30-character amount limit and
+currency-specific minimums of 0.01 EUR and 10 HUF, resolves selected adapters through the registry,
 calls them in parallel with per-provider abort/timeout support, validates normalized results, ranks
-only fresh `AVAILABLE` quotes, and validates the response before returning it. A valid request always
+only fresh `AVAILABLE` quotes with positive payouts, and validates the response before returning it. A valid request always
 gets a `200` domain response even when all providers are unavailable/failed; malformed requests get
 structured `400` errors and unexpected route failures get sanitized `500` errors.
 

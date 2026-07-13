@@ -37,10 +37,6 @@ export class ProviderAdapterRegistry {
     }));
   }
 
-  listAdapters(): readonly ProviderAdapter[] {
-    return Array.from(this.#registrations.values(), (registration) => registration.adapter);
-  }
-
   get(providerId: ProviderIdentifier): ProviderRegistration {
     const registration = this.#registrations.get(providerId);
     if (registration === undefined) {

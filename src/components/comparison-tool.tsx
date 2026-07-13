@@ -22,9 +22,10 @@ const initialRequest: QuoteApiRequest = {
   sourceCurrency: "EUR",
   targetCurrency: "HUF",
   sourceAmount: "1000",
-  providers: ["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"],
   customerPlan: null,
 };
+
+const genericApiErrorMessage = "A quote szolgáltatás válasza nem feldolgozható.";
 
 type ViewState =
   | { status: "loading" }
@@ -47,6 +48,10 @@ function labelForStatus(result: QuoteResult): string {
   return result.sourceType === "MOCK" ? "Mock adat" : result.status;
 }
 
+function formatRate(rate: string): string {
+  return rate.includes(".") ? rate.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") : rate;
+}
+
 async function fetchQuotes(
   request: QuoteApiRequest,
   signal?: AbortSignal,
@@ -57,7 +62,13 @@ async function fetchQuotes(
     body: JSON.stringify(request),
     signal,
   });
-  const payload: unknown = await response.json();
+  let payload: unknown;
+
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(genericApiErrorMessage);
+  }
 
   if (!response.ok) {
     const parsedError = quoteApiErrorResponseSchema.safeParse(payload);
@@ -66,7 +77,9 @@ async function fetchQuotes(
     );
   }
 
-  return quoteApiResponseSchema.parse(payload);
+  const parsedResponse = quoteApiResponseSchema.safeParse(payload);
+  if (!parsedResponse.success) throw new Error(genericApiErrorMessage);
+  return parsedResponse.data;
 }
 
 export function ComparisonTool() {
@@ -99,7 +112,6 @@ export function ComparisonTool() {
         sourceCurrency,
         targetCurrency,
         sourceAmount: amount.trim().replace(",", "."),
-        providers: ["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"],
         customerPlan: null,
       });
       setView({ status: "success", data });
@@ -253,7 +265,7 @@ export function ComparisonTool() {
                       {formatMoney(result.targetAmount.amount, result.targetAmount.currency)}
                     </td>
                     <td className="px-4 py-5 font-mono text-sm text-slate-300">
-                      1 {result.pair.sourceCurrency} = {result.effectiveRate}{" "}
+                      1 {result.pair.sourceCurrency} = {formatRate(result.effectiveRate)}{" "}
                       {result.pair.targetCurrency}
                     </td>
                     <td className="px-4 py-5 text-sm text-slate-300">

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createQuotePostHandler } from "@/app/api/v1/quotes/handler";
 import { quoteApiErrorResponseSchema, quoteApiResponseSchema } from "@/domain/quote-api";
 import { POST } from "@/app/api/v1/quotes/route";
 
@@ -58,6 +59,41 @@ describe("POST /api/v1/quotes", () => {
     },
   );
 
+  it("rejects an amount that would round to a zero payout", async () => {
+    const response = await POST(postJson({ ...validRequest, sourceAmount: "0.001" }));
+    const payload = quoteApiErrorResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(400);
+    expect(payload.error.fields?.sourceAmount).toContain("Source amount must be at least 0.01 EUR");
+  });
+
+  it("applies the HUF source minimum independently", async () => {
+    const response = await POST(
+      postJson({
+        ...validRequest,
+        sourceCurrency: "HUF",
+        targetCurrency: "EUR",
+        sourceAmount: "1",
+      }),
+    );
+    const payload = quoteApiErrorResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(400);
+    expect(payload.error.fields?.sourceAmount).toContain("Source amount must be at least 10 HUF");
+  });
+
+  it("rejects an over-length decimal amount", async () => {
+    const sourceAmount = `0.${"0".repeat(28)}1`;
+    const response = await POST(postJson({ ...validRequest, sourceAmount }));
+    const payload = quoteApiErrorResponseSchema.parse(await response.json());
+
+    expect(sourceAmount).toHaveLength(31);
+    expect(response.status).toBe(400);
+    expect(payload.error.fields?.sourceAmount).toContain(
+      "Source amount must not exceed 30 characters",
+    );
+  });
+
   it("rejects identical currencies", async () => {
     const response = await POST(
       postJson({ ...validRequest, sourceCurrency: "EUR", targetCurrency: "EUR" }),
@@ -82,6 +118,11 @@ describe("POST /api/v1/quotes", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects an empty customer plan", async () => {
+    const response = await POST(postJson({ ...validRequest, customerPlan: "   " }));
+    expect(response.status).toBe(400);
+  });
+
   it("rejects unexpected request fields", async () => {
     const response = await POST(postJson({ ...validRequest, secretOverride: true }));
     expect(response.status).toBe(400);
@@ -99,5 +140,21 @@ describe("POST /api/v1/quotes", () => {
 
     expect(response.status).toBe(400);
     expect(payload.error.code).toBe("INVALID_JSON");
+  });
+
+  it("returns a sanitized 500 response when the quote service fails", async () => {
+    const privateMessage = "private service failure";
+    const postWithFailure = createQuotePostHandler(async () => {
+      throw new Error(privateMessage);
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await postWithFailure(postJson(validRequest));
+    const payload = quoteApiErrorResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(500);
+    expect(payload.error.code).toBe("INTERNAL_ERROR");
+    expect(JSON.stringify(payload)).not.toContain(privateMessage);
+    consoleError.mockRestore();
   });
 });

@@ -46,6 +46,11 @@ export const monetaryAmountSchema = z.object({
   amount: decimalStringSchema,
 });
 
+export const positiveMonetaryAmountSchema = z.object({
+  currency: currencyCodeSchema,
+  amount: positiveDecimalStringSchema,
+});
+
 export const quoteRequestSchema = z
   .object({
     sourceCurrency: supportedCurrencyCodeSchema,
@@ -64,9 +69,9 @@ export const availableQuoteSchema = z.object({
   provider: providerSchema,
   pair: currencyPairSchema,
   direction: z.literal("SELL_SOURCE_BUY_TARGET"),
-  sourceAmount: monetaryAmountSchema,
-  targetAmount: monetaryAmountSchema,
-  effectiveRate: decimalStringSchema,
+  sourceAmount: positiveMonetaryAmountSchema,
+  targetAmount: positiveMonetaryAmountSchema,
+  effectiveRate: positiveDecimalStringSchema,
   explicitFee: monetaryAmountSchema,
   totalCost: monetaryAmountSchema,
   rateTimestamp: z.iso.datetime(),
