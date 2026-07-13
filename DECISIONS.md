@@ -7,7 +7,8 @@
 Use Next.js 16.2.10 App Router, React 19.2.4, TypeScript 5.9.3 and Tailwind CSS 4.3.2. These are the
 mutually resolved stable foundation versions and include the relevant React Server Component
 security fixes. Prefer Server Components and shadcn/ui-compatible tokens/composition; add shadcn
-primitives only when a concrete UI needs them.
+primitives only when a concrete UI needs them. Require Node.js 22.13 or newer because the selected
+pnpm 11.7.0 runtime depends on Node APIs unavailable in Node 20.
 
 ## ADR-002 — Package manager
 

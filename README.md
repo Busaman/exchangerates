@@ -23,7 +23,7 @@ locked in `pnpm-lock.yaml`.
 
 ## Local setup
 
-Requirements: Node.js 20.9 or newer, pnpm 11, and PostgreSQL for persistence work.
+Requirements: Node.js 22.13 or newer, pnpm 11, and PostgreSQL for persistence work.
 
 ```bash
 pnpm install
