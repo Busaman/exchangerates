@@ -51,7 +51,7 @@ Approved public website endpoint:
 
 - `GET https://www.revolut.com/api/exchange/quote`
 - required query: `amount`, `country=HU`, `fromCurrency`, `isRecipientAmount=false`, `toCurrency`
-- request headers: `Accept: application/json` and the non-deceptive NeoRate User-Agent only
+- request headers: `Accept: application/json`, `Accept-Language: hu`, and the non-deceptive NeoRate User-Agent only
 - explicitly forbidden: cookies, authorization, browser/user identifiers, copied Cloudflare data,
   Sentry/analytics headers, HTML parsing and browser automation
 
@@ -88,10 +88,16 @@ second payout calculation.
 The endpoint has no authenticated account or prior-usage input and therefore cannot know actual
 rolling-30-day allowance usage. NeoRate has removed the old usage field rather than claim false
 account-specific accuracy or double-charge endpoint fees. Results state `FULL_ALLOWANCE_ASSUMED` and
-must be checked in-app. Sanitized fixtures cover zero and non-zero per-plan fee objects, but the
-2026-07-13 live probe returned HTTP 400 (`Required 'localeCode' is missing`) for the required
-no-cookie request. Below/above-allowance and weekday/weekend behavior are not live-verified until the
-exact non-speculative request contract is confirmed in staging.
+must be checked in-app. The locale is selected by `Accept-Language: hu`, not by a query parameter.
+The public request still does not reveal account-specific allowance usage, so below/above-allowance
+and weekday/weekend account behavior must be confirmed in the Revolut app and controlled staging.
+
+Live evidence captured 2026-07-13 with no cookies or authorization: HUF→EUR at 100,000, 400,000, and
+1,100,000 HUF and EUR→HUF at 100, 1,000, and 3,000 EUR all returned HTTP 200. Sanitized summaries
+confirmed matching sender/recipient currencies, positive recipient amounts, correct rate directions,
+and rate timestamps. Every response returned only `STANDARD`; Plus/Premium/Metal/Ultra must remain
+unavailable unless their exact plan objects appear. Multi-plan fixtures exercise the strict contract
+but are not evidence of current live plan availability.
 
 The result exposes selected plan, raw/effective rates, FX and total fee, fee currency, total
 source-side cost, tooltips, source/retrieval timestamps and an indicative warning. Revolut's legal page separately notes a

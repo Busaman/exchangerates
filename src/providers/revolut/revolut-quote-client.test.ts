@@ -206,9 +206,14 @@ describe("RevolutPublicQuoteClient", () => {
     );
     expect(init?.headers).toEqual({
       Accept: "application/json",
+      "Accept-Language": "hu",
       "User-Agent": revolutQuoteClientConfig.userAgent,
     });
-    expect(JSON.stringify(init?.headers).toLowerCase()).not.toMatch(/cookie|authorization|sentry/);
+    const requestHeaders = new Headers(init?.headers);
+    expect(requestHeaders.get("Accept-Language")).toBe("hu");
+    expect(requestHeaders.has("Cookie")).toBe(false);
+    expect(requestHeaders.has("Authorization")).toBe(false);
+    expect(new URL(String(url)).searchParams.has("localeCode")).toBe(false);
     expect(init?.credentials).toBeUndefined();
   });
 

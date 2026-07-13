@@ -111,7 +111,8 @@ directional EUR/HUF and HUF/EUR. Revolut's official converter uses the publicly 
 `GET https://www.revolut.com/api/exchange/quote` endpoint, but Revolut does not document it as a
 supported external personal API. Fetch it with `amount`, `country=HU`, `fromCurrency`,
 `isRecipientAmount=false`, and `toCurrency`; classify successful observations as
-`LIVE_UNOFFICIAL`. Never use HTML/`__NEXT_DATA__`, cookies, authorization, user/browser identifiers,
+`LIVE_UNOFFICIAL`. Hungarian locale selection uses the website endpoint's `Accept-Language: hu`
+header; there is no `localeCode` query parameter. Never use HTML/`__NEXT_DATA__`, cookies, authorization, user/browser identifiers,
 browser automation, Revolut Business/Pro, private authenticated app endpoints, reciprocal
 inference, or a reference-rate fallback.
 
@@ -135,12 +136,17 @@ consistent source fee currency and total source-side cost, and uses that fee onc
 manually recalculate fair-usage or weekend fees and therefore cannot double-charge them.
 
 The endpoint request contains no account identity or prior rolling-30-day usage. Sanitized fixtures
-show complete per-plan fee objects without such context; the 2026-07-13 live probe could not verify
-below/above-allowance or weekend behavior because the current endpoint returned HTTP 400 with
-`Required 'localeCode' is missing` for the required no-cookie request. Adding an undocumented
-locale parameter/header would be speculation, so NeoRate removes the usage input and labels every
-successful quote `FULL_ALLOWANCE_ASSUMED`. This is less misleading than accepting account usage
-while also using endpoint-computed fees. Actual allowance and weekend fees must be verified in-app.
+show complete per-plan fee objects without such context. NeoRate removes the usage input and labels
+every successful quote `FULL_ALLOWANCE_ASSUMED`; this is less misleading than accepting account
+usage while also using endpoint-computed fees. Actual allowance and weekend fees must be verified
+in-app.
+
+The 2026-07-13 no-cookie live probe with `Accept-Language: hu` returned `200 OK` for HUF→EUR at
+100,000, 400,000, and 1,100,000 HUF and EUR→HUF at 100, 1,000, and 3,000 EUR. Every sanitized summary
+reported matching currencies, positive recipient amount, correct rate direction, and a timestamp.
+Every response exposed only `STANDARD`; NeoRate therefore fails closed for the other selected plans
+until the endpoint returns their exact complete plan fee objects. Fixture support is contract coverage,
+not evidence that every plan is currently returned live.
 
 The endpoint is undocumented and its contract/access requirements may change. Saved JSON fixtures
 contain only sanitized contract evidence and tests never call Revolut. The Hungarian legal page also describes a conditional migration-linked

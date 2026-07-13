@@ -52,8 +52,8 @@ registered `UNAVAILABLE` unless the validated `REVOLUT_ADAPTER_ENABLED=true` gat
 
 The Revolut personal adapter is isolated under `src/providers/revolut`. Its dedicated client fetches
 only `GET https://www.revolut.com/api/exchange/quote` with allowlisted `amount`, `country=HU`,
-`fromCurrency`, `isRecipientAmount=false`, and `toCurrency` parameters. It sends JSON accept and an
-identifying NeoRate User-Agent, enforces a 2.5-second per-attempt timeout and response-size limits,
+`fromCurrency`, `isRecipientAmount=false`, and `toCurrency` parameters. It sends JSON accept,
+`Accept-Language: hu`, and an identifying NeoRate User-Agent, enforces a 2.5-second per-attempt timeout and response-size limits,
 and retries only bounded transient failures. Zod validates every used sender, recipient, rate,
 timestamp, plan, fee and tooltip field while allowing unrelated future fields; decimal.js checks
 positivity, pair-specific plausibility, sender/recipient/rate consistency and fee-cost consistency.

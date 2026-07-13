@@ -294,6 +294,7 @@ async function fetchWithTimeout({
         method: "GET",
         headers: {
           Accept: "application/json",
+          "Accept-Language": "hu",
           "User-Agent": revolutQuoteClientConfig.userAgent,
         },
         redirect: "manual",

@@ -150,9 +150,10 @@ The server fetches only:
 - query: `amount`, `country=HU`, `fromCurrency`, `isRecipientAmount=false`, `toCurrency`
 
 The endpoint is publicly accessible and used by Revolut's own converter, but is not a documented or
-supported external personal API. NeoRate sends `Accept: application/json` and an identifying
-User-Agent only—no cookies, authorization, browser identifiers, Sentry/analytics headers, Business
-APIs, private app endpoints, reciprocal rates, HTML parsing, browser automation, or market fallback.
+supported external personal API. NeoRate sends `Accept: application/json`, `Accept-Language: hu`,
+and an identifying User-Agent only—no `localeCode` query parameter, cookies, authorization, Referer,
+browser identifiers, Sentry/Cloudflare/analytics headers, Business APIs, private app endpoints,
+reciprocal rates, HTML parsing, browser automation, or market fallback.
 
 ## Decimal and rounding rules
 
@@ -216,12 +217,13 @@ process only; database readiness should be added when persistence becomes part o
 Current limitations: Revolut covers only Hungarian personal EUR/HUF and HUF/EUR and remains disabled
 by default pending staging and legal/product verification. The undocumented endpoint contract may
 change or reject server-side HTTP; that safely becomes unavailable and is negative-cached briefly.
-The 2026-07-13 local probe received HTTP 400 (`Required 'localeCode' is missing`) for the documented
-request shape, so the gate must remain off until the exact no-cookie request contract is confirmed.
-The adapter assumes the public converter's full-allowance plan quote and does not know actual rolling-30-day usage,
-does not model the separately documented conditional Hungarian migration transaction fee, and
-cannot promise the app's executable rounding or total. Persistence is not yet connected to the
-quote request path.
+The 2026-07-13 local probe sent `Accept-Language: hu` and received `200 OK` for three amounts in each
+direction; every response had matching currencies, a positive recipient amount, and a rate timestamp.
+All six responses returned only the `STANDARD` plan, so Plus/Premium/Metal/Ultra requests remain
+unavailable unless the endpoint actually returns their exact plan objects. The adapter assumes the
+public converter's full-allowance plan quote and does not know actual rolling-30-day usage, does not
+model the separately documented conditional Hungarian migration transaction fee, and cannot promise
+the app's executable rounding or total. Persistence is not yet connected to the quote request path.
 
 ## Project context
 

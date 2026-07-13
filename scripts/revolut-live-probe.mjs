@@ -10,7 +10,9 @@ const probes = [
   { amount: "100000", fromCurrency: "HUF", toCurrency: "EUR" },
   { amount: "400000", fromCurrency: "HUF", toCurrency: "EUR" },
   { amount: "1100000", fromCurrency: "HUF", toCurrency: "EUR" },
+  { amount: "100", fromCurrency: "EUR", toCurrency: "HUF" },
   { amount: "1000", fromCurrency: "EUR", toCurrency: "HUF" },
+  { amount: "3000", fromCurrency: "EUR", toCurrency: "HUF" },
 ];
 const personalPlans = new Set(["STANDARD", "PLUS", "PREMIUM", "METAL", "ULTRA"]);
 
@@ -29,6 +31,7 @@ for (const probe of probes) {
       method: "GET",
       headers: {
         Accept: "application/json",
+        "Accept-Language": "hu",
         "User-Agent": "NeoRate/0.1 (+https://github.com/Busaman/exchangerates)",
       },
       redirect: "manual",

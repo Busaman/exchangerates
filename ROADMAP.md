@@ -44,9 +44,10 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Resolve and document the public endpoint's current no-cookie `localeCode` request requirement,
-then deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging. Verify both
-directions, all five plans, below/above-allowance amounts, weekday/weekend behavior, latency,
+**Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
+`Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed
+only `STANDARD`; verify whether and under which public request semantics the other four personal plans
+are returned. Then verify below/above-allowance amounts, weekday/weekend behavior, latency,
 rate-limit/error rates, cache transitions and response-contract stability. Obtain legal/product
 approval for the undocumented JSON endpoint before production enablement; add telemetry without a
 fallback.**
