@@ -37,7 +37,7 @@ export type RevolutFeeCalculation = Readonly<{
   effectiveRate: string;
   feeCurrency: SupportedCurrencyCode;
   fairUsageAllowanceHuf: string | null;
-  allowanceUsedBeforeQuoteHuf: string;
+  rollingThirtyDayExchangeUsedBeforeQuoteHuf: string;
   allowanceConsumedByQuoteHuf: string;
   remainingAllowanceAfterQuoteHuf: string | null;
 }>;
@@ -84,7 +84,7 @@ export function calculateRevolutPersonalQuote({
 }): RevolutFeeCalculation {
   const sourceAmount = decimal(sourceAmountInput);
   const displayedBaseRate = decimal(displayedBaseRateInput);
-  const allowanceUsedBefore = decimal(personalContext.monthlyExchangeUsedHuf);
+  const allowanceUsedBefore = decimal(personalContext.rollingThirtyDayExchangeUsedHuf);
   const planPolicy = revolutPersonalFeePolicy[personalContext.plan];
   const allowanceConsumed =
     sourceCurrency === "HUF" ? sourceAmount : sourceAmount.times(displayedBaseRate);
@@ -133,7 +133,7 @@ export function calculateRevolutPersonalQuote({
     effectiveRate: decimalToPlainString(effectiveRate),
     feeCurrency: sourceCurrency,
     fairUsageAllowanceHuf: planPolicy.allowanceHuf,
-    allowanceUsedBeforeQuoteHuf: decimalToPlainString(allowanceUsedBefore),
+    rollingThirtyDayExchangeUsedBeforeQuoteHuf: decimalToPlainString(allowanceUsedBefore),
     allowanceConsumedByQuoteHuf: decimalToPlainString(allowanceConsumed),
     remainingAllowanceAfterQuoteHuf:
       remainingAllowanceAfter === null ? null : decimalToPlainString(remainingAllowanceAfter),

@@ -16,6 +16,7 @@ export const revolutRateSourceConfig = {
   timeoutMs: 2_500,
   retryBackoffMs: [150, 400] as const,
   freshCacheMs: 60_000,
+  negativeCacheMs: 30_000,
   staleCacheMs: 15 * 60_000,
   maximumSourceObservationAgeMs: 15 * 60_000,
   maximumFutureClockSkewMs: 2 * 60_000,

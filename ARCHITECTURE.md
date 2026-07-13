@@ -30,7 +30,7 @@ be returned as a provider quote.
 
 Interactive inputs and presentational formatting live in client components. Retrieval, secrets,
 provider adapters, persistence and authoritative calculations run server-side. External consumers
-will use versioned Route Handlers (planned `/api/v1/quotes`); internal mutations may later use Server
+use the versioned `POST /api/v1/quotes` Route Handler; internal mutations may later use Server
 Actions. Domain objects crossing a boundary are runtime-validated.
 
 ## Provider adapters and ingestion
@@ -46,6 +46,9 @@ adapter lookup and all configured adapters. Registrations distinguish `SUPPORTED
 `UNAVAILABLE`; runtime timeout, exception and invalid-response failures become `FAILED` results.
 Adding a provider requires its identifier/schema entry, one isolated adapter, contract tests and one
 registry registration—quote orchestration and ranking contain no provider-specific branches.
+Registrations may set a provider-specific timeout. The service default is 2 seconds; enabled
+Revolut uses 10 seconds without extending the deadline of mock or future providers. Revolut is
+registered `UNAVAILABLE` unless the validated `REVOLUT_ADAPTER_ENABLED=true` gate is set.
 
 The Revolut personal adapter is isolated under `src/providers/revolut`. Its rate source fetches only
 the whitelisted Hungary converter URL for the requested direction, identifies NeoRate through its
@@ -73,7 +76,7 @@ be included in `totalCost`, with the cost currency and methodology documented.
 
 For Revolut personal quotes, source precision is retained through fee calculation. Allowance
 consumption is the source HUF amount, or the source EUR amount multiplied by that same directional
-EUR/HUF page rate. Fair-usage fee applies only to the part exceeding remaining monthly allowance;
+EUR/HUF page rate. Fair-usage fee applies only to the part exceeding the remaining rolling-30-day allowance;
 the weekend fee applies independently to the full source amount. Both source-currency components
 are added, subtracted once, and the remainder is converted. Only final payout is rounded down to EUR
 2 or HUF 0 decimals; effective rate is derived from that payout. This conservative normalization is
@@ -82,10 +85,13 @@ indicative and not a claim about executable app rounding.
 ## Cache and update strategy
 
 There is no shared cache yet. The Revolut rate source has an in-process, direction-keyed 60-second
-fresh cache. After a failed refresh, the last successful observation may be returned for at most 15
-minutes only with `STALE` status; stale quotes are displayed but never ranked best. A failed refresh
-never changes the original `rateTimestamp` or `retrievedAt`. After the stale interval, the adapter
-returns unavailable without numbers. A future shared cache must preserve these semantics.
+fresh cache. Concurrent refreshes for the same direction share one in-flight request. Fetch/parse
+failure is negative-cached for 30 seconds to avoid repeated retry storms; this never extends the
+source timestamp or stale window. After a failed refresh, the last successful observation may be
+returned for at most 15 minutes only with `STALE` status; stale quotes are displayed but never
+ranked best. A failed refresh never changes the original `rateTimestamp` or `retrievedAt`. After the
+stale interval, the adapter returns unavailable without numbers. A future shared cache must preserve
+these semantics.
 
 ## Persistence
 
@@ -133,8 +139,8 @@ sequenceDiagram
 
 ## Errors, observability and security
 
-Expected provider failures are typed results. The comparison service isolates unexpected adapter
-failures into unavailable results while emitting structured error logs with request/provider context
+Expected source failures are typed unavailable results. The comparison service isolates unexpected
+adapter failures into `error/FAILED` results while emitting structured error logs with request/provider context
 but no credentials or raw sensitive payloads; request/schema failures outside an adapter still fail
 the request rather than being mislabeled as provider unavailability.
 Future production telemetry should measure adapter latency, success rate, quote age, cache behavior

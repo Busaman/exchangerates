@@ -97,8 +97,9 @@ source amounts, target amounts and effective rates as defense in depth.
 **Status:** Accepted (2026-07-13)
 
 Compose provider adapters only in `ProviderAdapterRegistry`. The quote service selects registry
-entries, applies a 10-second default provider timeout with `AbortSignal`, validates results and ranks
-only fresh `AVAILABLE` quotes. Expose this through strict `POST /api/v1/quotes`. Valid partial or
+entries, applies a 2-second default provider timeout with `AbortSignal`, and honors optional
+per-registration deadlines (10 seconds for the enabled experimental Revolut adapter). It validates
+results and ranks only fresh `AVAILABLE` quotes. Expose this through strict `POST /api/v1/quotes`. Valid partial or
 complete provider failure is a `200` domain response; request validation is `400`, and unexpected
 route failure is a sanitized `500`. Provider errors never expose stack traces or private messages.
 
@@ -112,8 +113,10 @@ project. Fetch only the two official Hungary converter pages, parse their struct
 payload, and classify successful observations as `LIVE_UNOFFICIAL`. Never use Revolut Business/Pro,
 private app endpoints, authentication, reciprocal inference, or a reference-rate fallback.
 
-Use a 2.5-second per-attempt source timeout, two retries (150 ms and 400 ms backoff), a 60-second in-process fresh
-cache, and a 15-minute maximum stale window. Page/source timestamps older than 15 minutes, future
+Use a 2.5-second per-attempt source timeout, two retries (150 ms and 400 ms backoff), a 60-second
+in-process fresh cache, a 30-second negative-result cache, per-direction single-flight refreshes,
+and a 15-minute maximum stale window. Negative caching reduces repeated blocked traffic but never
+renews a successful observation or extends the stale window. Page/source timestamps older than 15 minutes, future
 timestamps beyond 2 minutes, challenge pages, inconsistent amounts, wrong directions, and values
 outside configured EUR/HUF or HUF/EUR plausibility bounds are rejected. A cached observation after
 refresh failure is explicitly `STALE` and cannot win comparison.
@@ -121,12 +124,14 @@ refresh failure is explicitly `STALE` and cannot win comparison.
 Fee policy comes from Revolut Hungary's personal fee/help documents: Standard 350,000 HUF at 1%
 overage, Plus 1,050,000 HUF at 0.5%, no weekday fair-usage fee for Premium/Metal/Ultra, and 1% for
 all plans from Friday 17:00 through Sunday 18:00 in `America/New_York`. The interval is half-open at
-Sunday 18:00 and evaluated with IANA DST rules. Plan and the user's prior monthly HUF usage are
-mandatory context; NeoRate never guesses account usage. Fair-usage and weekend components are
+Sunday 18:00 and evaluated with IANA DST rules. Plan and the user's prior rolling-30-day HUF usage
+are mandatory context; NeoRate never guesses account usage. Fair-usage and weekend components are
 calculated independently on source value, summed, then deducted before conversion.
 
 The public page may be bot-blocked and its markup may change. Saved fixtures contain only the
 minimal structured evidence. The Hungarian legal page also describes a conditional migration-linked
 special transaction fee whose customer activation cannot be inferred from public context; it is not
 modeled and the UI requires final app verification. This adapter is not production approval to rely
-on the page as an executable quote.
+on the page as an executable quote. The registration is `UNAVAILABLE` by default and performs no
+outbound request. `REVOLUT_ADAPTER_ENABLED=true` is an explicit staging-only opt-in until live
+server access, parser reliability and legal/product approval have been demonstrated.

@@ -14,6 +14,7 @@ import {
   type QuoteResult,
   type SupportedCurrencyCode,
 } from "@/domain/quote";
+import { QuoteApiRequestError, quoteApiFieldMessage } from "@/components/quote-api-errors";
 
 const currencyNames = {
   EUR: "EUR · euró",
@@ -26,7 +27,7 @@ const initialRequest: QuoteApiRequest = {
   sourceAmount: "1000",
   customerPlan: null,
   providerContexts: {
-    REVOLUT: { plan: "STANDARD", monthlyExchangeUsedHuf: "0" },
+    REVOLUT: { plan: "STANDARD", rollingThirtyDayExchangeUsedHuf: "0" },
   },
 };
 
@@ -86,9 +87,13 @@ async function fetchQuotes(
 
   if (!response.ok) {
     const parsedError = quoteApiErrorResponseSchema.safeParse(payload);
-    throw new Error(
-      parsedError.success ? parsedError.data.error.message : "A kérés sikertelen volt.",
-    );
+    if (parsedError.success) {
+      throw new QuoteApiRequestError(
+        parsedError.data.error.message,
+        parsedError.data.error.fields ?? {},
+      );
+    }
+    throw new Error("A kérés sikertelen volt.");
   }
 
   const parsedResponse = quoteApiResponseSchema.safeParse(payload);
@@ -101,7 +106,8 @@ export function ComparisonTool() {
   const [targetCurrency, setTargetCurrency] = useState<SupportedCurrencyCode>("HUF");
   const [amount, setAmount] = useState("1000");
   const [revolutPlan, setRevolutPlan] = useState<RevolutPersonalPlan>("STANDARD");
-  const [monthlyExchangeUsedHuf, setMonthlyExchangeUsedHuf] = useState("0");
+  const [rollingThirtyDayExchangeUsedHuf, setRollingThirtyDayExchangeUsedHuf] = useState("0");
+  const [revolutUsageError, setRevolutUsageError] = useState("");
   const [view, setView] = useState<ViewState>({ status: "loading" });
 
   useEffect(() => {
@@ -121,6 +127,7 @@ export function ComparisonTool() {
 
   async function submitComparison(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setRevolutUsageError("");
     setView({ status: "loading" });
 
     try {
@@ -132,15 +139,24 @@ export function ComparisonTool() {
         providerContexts: {
           REVOLUT: {
             plan: revolutPlan,
-            monthlyExchangeUsedHuf: monthlyExchangeUsedHuf.trim().replace(",", "."),
+            rollingThirtyDayExchangeUsedHuf: rollingThirtyDayExchangeUsedHuf
+              .trim()
+              .replace(",", "."),
           },
         },
       });
       setView({ status: "success", data });
     } catch (error) {
+      const usageError = quoteApiFieldMessage(error, "providerContexts");
+      setRevolutUsageError(usageError ?? "");
       setView({
         status: "error",
-        message: error instanceof Error ? error.message : "A kérés sikertelen volt.",
+        message:
+          usageError !== undefined
+            ? ""
+            : error instanceof Error
+              ? error.message
+              : "A kérés sikertelen volt.",
       });
     }
   }
@@ -190,22 +206,34 @@ export function ComparisonTool() {
             </select>
           </label>
           <label className="grid gap-2 text-sm font-medium text-slate-300">
-            Ebben a ciklusban már átváltott összeg
+            Az elmúlt 30 napban átváltott összeg
             <div className="flex h-11 items-center rounded-lg border border-white/10 bg-[#12233a] focus-within:border-emerald-300">
               <input
-                value={monthlyExchangeUsedHuf}
-                onChange={(event) => setMonthlyExchangeUsedHuf(event.target.value)}
+                value={rollingThirtyDayExchangeUsedHuf}
+                onChange={(event) => {
+                  setRollingThirtyDayExchangeUsedHuf(event.target.value);
+                  setRevolutUsageError("");
+                }}
                 inputMode="decimal"
                 className="min-w-0 flex-1 bg-transparent px-3 outline-none"
-                aria-describedby="revolut-usage-help"
+                aria-invalid={revolutUsageError !== ""}
+                aria-describedby="revolut-usage-help revolut-usage-error"
               />
               <span className="pr-3 font-mono text-sm text-slate-400">HUF</span>
             </div>
           </label>
           <p id="revolut-usage-help" className="text-xs leading-5 text-slate-400 sm:col-span-2">
-            A Revolut Standard és Plus kerete a teljes havi jogosult átváltási forgalomra
+            A Revolut Standard és Plus kerete a gördülő 30 nap jogosult átváltási forgalmára
             vonatkozik. NeoRate nem ismeri a fiókod tényleges használatát, ezért ezt neked kell
             megadnod.
+          </p>
+          <p
+            id="revolut-usage-error"
+            className="text-xs text-rose-300 sm:col-span-2"
+            role="status"
+            aria-live="polite"
+          >
+            {revolutUsageError}
           </p>
         </div>
 

@@ -145,7 +145,7 @@ describe("POST /api/v1/quotes", () => {
         ...validRequest,
         providers: ["REVOLUT"],
         providerContexts: {
-          REVOLUT: { plan: "STANDARD", monthlyExchangeUsedHuf: "-1" },
+          REVOLUT: { plan: "STANDARD", rollingThirtyDayExchangeUsedHuf: "-1" },
         },
       }),
     );
@@ -157,7 +157,10 @@ describe("POST /api/v1/quotes", () => {
       }),
     );
 
+    const malformedPayload = quoteApiErrorResponseSchema.parse(await malformedUsage.json());
+
     expect(malformedUsage.status).toBe(400);
+    expect(malformedPayload.error.fields?.providerContexts).not.toEqual([]);
     expect(missingUsage.status).toBe(400);
   });
 

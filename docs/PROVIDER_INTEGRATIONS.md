@@ -19,8 +19,9 @@ No scraping, private API reverse engineering or endpoint guessing belongs in an 
 6. Return `unavailable` without numeric fields for unsupported pairs, failed validation, provider
    downtime or missing reliable data. Do not substitute a market rate.
 7. Log structured operational context without credentials, account details or sensitive raw payloads.
-8. Add a `ProviderRegistration` to `providerRegistry` with status `SUPPORTED` or `UNAVAILABLE`.
-   Do not add provider-specific conditionals to the quote service or API route.
+8. Add a `ProviderRegistration` to `providerRegistry` with status `SUPPORTED` or `UNAVAILABLE`,
+   including a provider-specific timeout only when measured behavior requires it. Do not add
+   provider-specific conditionals to the quote service or API route.
 
 Adapters receive an `AbortSignal` in their context and should stop network work promptly when it is
 aborted. They return normalized `quote` or `unavailable` results. Thrown exceptions, timeouts and
@@ -43,7 +44,7 @@ Keep a new adapter disabled until its source, tests and user-facing labeling hav
 ## Revolut Hungary personal adapter
 
 Scope is personal customers only: `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA`, with explicit
-plan and `monthlyExchangeUsedHuf` context. Revolut Business, Pro, merchant/corporate products,
+plan and `rollingThirtyDayExchangeUsedHuf` context. Revolut Business, Pro, merchant/corporate products,
 authenticated accounts, private endpoints and reciprocal inference are prohibited.
 
 Approved rate pages:
@@ -66,8 +67,9 @@ returned HTTP 403 security/access pages. This fragility is expected and must be 
 
 Parser fixtures under `src/providers/revolut/fixtures` are sanitized minimal HTML documents, not
 full-page captures. Tests never call Revolut. The rate source uses a NeoRate-identifying User-Agent,
-2.5-second per-attempt timeout, two bounded retries, 60-second fresh cache and 15-minute stale ceiling. Only a last
-successful observation can become `STALE`; it is never ranked. Wrong direction, challenge content,
+2.5-second per-attempt timeout, two bounded retries, 60-second fresh cache, 30-second negative cache,
+per-direction single-flight and a 15-minute stale ceiling. Negative results suppress retry storms but
+do not renew timestamps or stale age. Only a last successful observation can become `STALE`; it is never ranked. Wrong direction, challenge content,
 missing/invalid structured data, stale/future timestamp, internally inconsistent amounts and
 configured implausible rates all become unavailable with no substituted value.
 
@@ -75,7 +77,8 @@ Fee order is:
 
 1. Calculate quote allowance consumption in HUF (HUF source directly; EUR source times the current
    directional page rate solely for allowance accounting).
-2. Calculate fair-usage fee in source currency only on the part above remaining monthly allowance.
+2. Calculate fair-usage fee in source currency only on the part above the remaining rolling-30-day
+   allowance documented by Revolut.
 3. Calculate the 1% weekend fee independently on the full source amount during Friday 17:00 through
    Sunday 18:00 `America/New_York` (`[Friday 17:00, Sunday 18:00)`, DST-aware).
 4. Add `fairUsageFee + weekendFee`, subtract once from source, multiply by the directional base rate,
@@ -86,3 +89,9 @@ market session, base/effective rates and indicative warning. Revolut's legal pag
 conditional Hungarian migration-linked special transaction fee. Because public request context
 cannot establish its activation for a customer, NeoRate does not calculate it and requires final
 verification in the Revolut app.
+
+The registration is disabled by default. Without `REVOLUT_ADAPTER_ENABLED=true`, an explicit
+Revolut selection returns a numeric-field-free unavailable result and makes no page request. Enable
+the flag only in controlled staging until server-side access, parser success and legal/product
+approval satisfy the approval gate. The registry's 10-second Revolut deadline does not change the
+2-second service default used by other providers.

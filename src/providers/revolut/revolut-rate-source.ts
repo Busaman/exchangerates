@@ -28,10 +28,12 @@ export type RevolutPublicPageRateSourceDependencies = Readonly<{
   sleep?: Sleep;
   timeoutMs?: number;
   freshCacheMs?: number;
+  negativeCacheMs?: number;
   staleCacheMs?: number;
 }>;
 
 type CachedObservation = Omit<RevolutRateObservation, "freshness">;
+type CachedFailure = Readonly<{ error: Error; expiresAt: number }>;
 
 function defaultSleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -100,8 +102,11 @@ export class RevolutPublicPageRateSource implements RevolutRateSource {
   readonly #sleep: Sleep;
   readonly #timeoutMs: number;
   readonly #freshCacheMs: number;
+  readonly #negativeCacheMs: number;
   readonly #staleCacheMs: number;
   readonly #cache = new Map<RevolutPairKey, CachedObservation>();
+  readonly #failures = new Map<RevolutPairKey, CachedFailure>();
+  readonly #inFlight = new Map<RevolutPairKey, Promise<RevolutRateObservation>>();
 
   constructor(dependencies: RevolutPublicPageRateSourceDependencies = {}) {
     this.#fetch = dependencies.fetch ?? fetch;
@@ -109,6 +114,7 @@ export class RevolutPublicPageRateSource implements RevolutRateSource {
     this.#sleep = dependencies.sleep ?? defaultSleep;
     this.#timeoutMs = dependencies.timeoutMs ?? revolutRateSourceConfig.timeoutMs;
     this.#freshCacheMs = dependencies.freshCacheMs ?? revolutRateSourceConfig.freshCacheMs;
+    this.#negativeCacheMs = dependencies.negativeCacheMs ?? revolutRateSourceConfig.negativeCacheMs;
     this.#staleCacheMs = dependencies.staleCacheMs ?? revolutRateSourceConfig.staleCacheMs;
   }
 
@@ -126,6 +132,40 @@ export class RevolutPublicPageRateSource implements RevolutRateSource {
       }
     }
 
+    const cachedFailure = this.#failures.get(pair);
+    if (cachedFailure !== undefined && requestTime.getTime() < cachedFailure.expiresAt) {
+      const stale = this.#staleObservation(cached, requestTime);
+      if (stale !== undefined) return stale;
+      throw cachedFailure.error;
+    }
+    if (cachedFailure !== undefined) this.#failures.delete(pair);
+
+    const existingRequest = this.#inFlight.get(pair);
+    if (existingRequest !== undefined) return existingRequest;
+
+    const request = this.#refresh(pair, cached, signal);
+    this.#inFlight.set(pair, request);
+    try {
+      return await request;
+    } finally {
+      if (this.#inFlight.get(pair) === request) this.#inFlight.delete(pair);
+    }
+  }
+
+  #staleObservation(
+    cached: CachedObservation | undefined,
+    at: Date,
+  ): RevolutRateObservation | undefined {
+    if (cached === undefined) return undefined;
+    const staleAge = at.getTime() - Date.parse(cached.rateTimestamp);
+    return staleAge <= this.#staleCacheMs ? { ...cached, freshness: "STALE" } : undefined;
+  }
+
+  async #refresh(
+    pair: RevolutPairKey,
+    cached: CachedObservation | undefined,
+    signal?: AbortSignal,
+  ): Promise<RevolutRateObservation> {
     let lastError: unknown;
     const sourceUrl = revolutSourceUrls[pair];
     const totalAttempts = revolutRateSourceConfig.retryBackoffMs.length + 1;
@@ -161,6 +201,7 @@ export class RevolutPublicPageRateSource implements RevolutRateSource {
           sourceUrl,
         };
         this.#cache.set(pair, observation);
+        this.#failures.delete(pair);
         return { ...observation, freshness: "FRESH" };
       } catch (error) {
         lastError = error;
@@ -173,10 +214,14 @@ export class RevolutPublicPageRateSource implements RevolutRateSource {
     if (signal?.aborted === true) {
       throw lastError instanceof Error ? lastError : new Error("Request aborted");
     }
-    if (cached !== undefined) {
-      const staleAge = this.#now().getTime() - Date.parse(cached.rateTimestamp);
-      if (staleAge <= this.#staleCacheMs) return { ...cached, freshness: "STALE" };
-    }
-    throw lastError instanceof Error ? lastError : new Error("Revolut rate is unavailable");
+    const failure =
+      lastError instanceof Error ? lastError : new Error("Revolut rate is unavailable");
+    this.#failures.set(pair, {
+      error: failure,
+      expiresAt: this.#now().getTime() + this.#negativeCacheMs,
+    });
+    const stale = this.#staleObservation(cached, this.#now());
+    if (stale !== undefined) return stale;
+    throw failure;
   }
 }

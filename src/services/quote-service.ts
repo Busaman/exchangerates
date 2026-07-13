@@ -17,9 +17,12 @@ import {
 import { logger } from "@/lib/logger";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { ProviderAdapterRegistry, providerRegistry } from "@/providers/provider-registry";
-import { createProviderErrorResult } from "@/providers/unavailable-result";
+import {
+  createProviderErrorResult,
+  createProviderUnavailableResult,
+} from "@/providers/unavailable-result";
 
-export const defaultProviderTimeoutMs = 10_000;
+export const defaultProviderTimeoutMs = 2_000;
 
 class ProviderTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
@@ -83,7 +86,6 @@ export async function getQuotes(
 ): Promise<QuoteApiResponse> {
   const request = quoteApiRequestSchema.parse(requestInput);
   const registry = dependencies.registry ?? providerRegistry;
-  const timeoutMs = dependencies.providerTimeoutMs ?? defaultProviderTimeoutMs;
   const now = dependencies.now ?? (() => new Date());
   const requestId = (dependencies.createRequestId ?? randomUUID)();
   const generatedAt = now().toISOString();
@@ -101,6 +103,18 @@ export async function getQuotes(
         providerContexts: request.providerContexts,
         requestedAt: generatedAt,
       };
+
+      if (registration.status === "UNAVAILABLE") {
+        return createProviderUnavailableResult({
+          provider: registration.adapter.provider,
+          request: providerRequest,
+          reason: registration.reason,
+          sourceId: registration.sourceId,
+        });
+      }
+
+      const timeoutMs =
+        dependencies.providerTimeoutMs ?? registration.timeoutMs ?? defaultProviderTimeoutMs;
 
       try {
         return await callWithTimeout(registration.adapter, providerRequest, timeoutMs);
@@ -133,7 +147,9 @@ export async function getQuotes(
         : "SUCCESS";
   const warnings = [
     ...(quotes.some((quote) => quote.sourceType === "MOCK") ? (["MOCK_DATA"] as const) : []),
-    ...(quotes.some((quote) => quote.sourceType === "LIVE_UNOFFICIAL")
+    ...(quotes.some(
+      (quote) => quote.provider.id === "REVOLUT" && quote.sourceType === "LIVE_UNOFFICIAL",
+    )
       ? (["REVOLUT_INDICATIVE"] as const)
       : []),
   ];

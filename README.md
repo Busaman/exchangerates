@@ -5,11 +5,12 @@ neobanks, fintech providers and selected banks, after known provider margins and
 supported directions are EUR/HUF and HUF/EUR; the domain and adapter boundaries are designed for
 more currencies and providers.
 
-> **Current status:** NeoRate includes an experimental Hungarian personal Revolut adapter, one
-> deterministic mock and one intentionally unavailable provider. Revolut data is parsed from an
-> official public webpage, classified `LIVE_UNOFFICIAL`, and is indicative—not executable. Public
-> page blocking or validation failure produces no numeric Revolut quote. Always confirm the final
-> rate and fees in the Revolut app. NeoRate currently covers personal-provider pricing only.
+> **Current status:** NeoRate includes a disabled-by-default experimental Hungarian personal
+> Revolut adapter, one deterministic mock and one intentionally unavailable provider. Revolut must
+> be explicitly enabled with `REVOLUT_ADAPTER_ENABLED=true` only in a controlled staging
+> environment. Parsed data from the official public webpage is `LIVE_UNOFFICIAL`, indicative—not
+> executable—and page blocking or validation failure produces no numeric quote. Always confirm the
+> final rate and fees in the Revolut app. NeoRate currently covers personal-provider pricing only.
 
 ## Selected stack
 
@@ -55,7 +56,7 @@ characters, values below the source-currency minimum (0.01 EUR or 100 HUF), and 
   "providerContexts": {
     "REVOLUT": {
       "plan": "STANDARD",
-      "monthlyExchangeUsedHuf": "0"
+      "rollingThirtyDayExchangeUsedHuf": "0"
     }
   }
 }
@@ -63,10 +64,11 @@ characters, values below the source-currency minimum (0.01 EUR or 100 HUF), and 
 
 Select `REVOLUT` to request Hungarian personal pricing. `plan` must be one of `STANDARD`, `PLUS`,
 `PREMIUM`, `METAL`, or `ULTRA`; Business and Pro are rejected. An amount-aware Revolut quote also
-requires the customer's own `monthlyExchangeUsedHuf` value because NeoRate cannot read account
-usage and the Standard/Plus allowance applies across qualifying monthly exchanges. Omitting the
-whole Revolut context yields a numeric-field-free unavailable result; malformed or partial context
-is a `400` validation error.
+requires the customer's own `rollingThirtyDayExchangeUsedHuf` value because NeoRate cannot read
+account usage and the Standard/Plus allowance applies across qualifying exchanges on Revolut's
+rolling 30-day basis. Omitting the whole Revolut context yields a numeric-field-free unavailable
+result; malformed or partial context is a `400` validation error. When the experimental adapter gate
+is off, an explicit Revolut request returns an unavailable result without making an HTTP request.
 
 A successful HTTP response uses status `200`, including partial or fully unavailable provider
 outcomes. It contains request metadata, normalized `quotes`, numeric-field-free `issues`,
@@ -128,8 +130,10 @@ Invalid JSON or input returns `400` with
 `INVALID_JSON` or `VALIDATION_ERROR`. Unexpected server failures return a sanitized `500
 INTERNAL_ERROR`; stack traces and internal provider errors are never returned.
 
-Provider calls time out after 10 seconds by default. One timeout or exception becomes a provider-level
-`FAILED` issue and does not remove valid results from other providers.
+Provider calls time out after 2 seconds by default. Registrations can declare a narrower or wider
+deadline; the enabled experimental Revolut registration uses 10 seconds to contain its bounded
+internal retries. One timeout or exception becomes a provider-level `FAILED` issue and does not
+remove valid results from other providers.
 
 ### Revolut personal quote fields
 
@@ -164,10 +168,11 @@ scale. Intermediate values are not rounded. Friday 17:00 through Sunday 18:00 is
 
 ## Environment variables
 
-| Variable       | Required                       | Purpose                                                                   |
-| -------------- | ------------------------------ | ------------------------------------------------------------------------- |
-| `DATABASE_URL` | For database commands/features | PostgreSQL connection URL; validated lazily before a DB client is created |
-| `LOG_LEVEL`    | No                             | `debug`, `info`, `warn`, or `error`; defaults to `info`                   |
+| Variable                  | Required                       | Purpose                                                                               |
+| ------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| `DATABASE_URL`            | For database commands/features | PostgreSQL connection URL; validated lazily before a DB client is created             |
+| `LOG_LEVEL`               | No                             | `debug`, `info`, `warn`, or `error`; defaults to `info`                               |
+| `REVOLUT_ADAPTER_ENABLED` | No                             | Experimental opt-in; exactly `true` enables public-page requests, defaults to `false` |
 
 Never commit `.env` files or credentials. `.env.example` contains documentation-only values.
 
@@ -205,11 +210,13 @@ environment, provision a reachable PostgreSQL database, run migrations as a cont
 step, and deploy with the standard Next.js build command. The health endpoint verifies the web
 process only; database readiness should be added when persistence becomes part of the request path.
 
-Current limitations: Revolut covers only Hungarian personal EUR/HUF and HUF/EUR. The public-page
-parser is fragile by nature and Revolut may return a security/challenge page to server-side HTTP;
-that safely becomes unavailable. The adapter does not know real monthly usage, does not model the
-separately documented conditional Hungarian migration transaction fee, and cannot promise the app's
-executable rounding or total. Persistence is not yet connected to the quote request path.
+Current limitations: Revolut covers only Hungarian personal EUR/HUF and HUF/EUR and remains disabled
+by default pending staging and legal/product verification. The public-page parser is fragile by
+nature and Revolut may return a security/challenge page to server-side HTTP; that safely becomes
+unavailable and is negative-cached briefly. The adapter does not know real rolling-30-day usage,
+does not model the separately documented conditional Hungarian migration transaction fee, and
+cannot promise the app's executable rounding or total. Persistence is not yet connected to the
+quote request path.
 
 ## Project context
 

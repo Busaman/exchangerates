@@ -31,7 +31,7 @@ const contractRequest: QuoteRequest = {
   sourceAmount: "1000",
   requestedAt,
   providerContexts: {
-    REVOLUT: { plan: "STANDARD", monthlyExchangeUsedHuf: "0" },
+    REVOLUT: { plan: "STANDARD", rollingThirtyDayExchangeUsedHuf: "0" },
   },
 };
 
@@ -122,6 +122,28 @@ describe("RevolutProviderAdapter", () => {
     expect(result).not.toHaveProperty("effectiveRate");
   });
 
+  it("propagates calculation failures instead of mislabeling them as source failures", async () => {
+    const adapter = new RevolutProviderAdapter({
+      rateSource: rateSource({
+        ...observation,
+        rate: "1",
+        sourceSenderAmount: "1",
+        sourceRecipientAmount: "1",
+      }),
+      now: () => new Date(requestedAt),
+    });
+
+    await expect(
+      adapter.getQuote({
+        ...contractRequest,
+        sourceAmount: "0.01",
+        providerContexts: {
+          REVOLUT: { plan: "ULTRA", rollingThirtyDayExchangeUsedHuf: "0" },
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
   it("preserves STALE source classification without making it live", async () => {
     const adapter = new RevolutProviderAdapter({
       rateSource: rateSource({ ...observation, freshness: "STALE" }),
@@ -139,7 +161,7 @@ describe("RevolutProviderAdapter", () => {
       sourceAmount: "1000",
       providers: ["REVOLUT"],
       providerContexts: {
-        REVOLUT: { plan, monthlyExchangeUsedHuf: "0" },
+        REVOLUT: { plan, rollingThirtyDayExchangeUsedHuf: "0" },
       },
     });
     expect(parsed.success).toBe(false);

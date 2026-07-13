@@ -12,9 +12,10 @@ adapter contract suite, registry, timeout isolation and regression tests are com
 
 ## 3. Official or legally reliable provider integrations — in progress
 
-The first adapter is implemented for Hungarian personal Revolut EUR/HUF and HUF/EUR using only the
-official public converter pages, strict parsing, explicit `LIVE_UNOFFICIAL` labeling and no fallback.
-It remains operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
+The first adapter is implemented but disabled by default for Hungarian personal Revolut EUR/HUF and
+HUF/EUR using only the official public converter pages, strict parsing, explicit `LIVE_UNOFFICIAL`
+labeling and no fallback. The validated environment gate, per-provider timeout, negative cache and
+single-flight control are complete. It remains operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
 after source/legal review. Investigate Gránit Bank only if a reliable legal source is identified.
 
 ## 4. Historical rate storage — planned
@@ -42,7 +43,7 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Deploy the Revolut adapter to a controlled Vercel staging environment and verify plain-HTTP page
-access, parser success rate, latency, challenge frequency, cache/stale transitions and fee output in
-both directions. Obtain legal/product approval for continued public-page parsing before treating it
-as production data; add telemetry and an operational disable switch without adding a fallback.**
+**Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in a controlled Vercel staging environment and
+verify plain-HTTP page access, parser success rate, latency, challenge frequency, negative/fresh/stale
+cache transitions and fee output in both directions. Obtain legal/product approval for continued
+public-page parsing before enabling production data; add telemetry without adding a fallback.**

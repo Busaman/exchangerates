@@ -8,13 +8,17 @@ import {
 const weekday = new Date("2026-01-05T15:00:00.000Z");
 const weekend = new Date("2026-01-03T15:00:00.000Z");
 
-function hufQuote(plan: RevolutPersonalPlan, monthlyExchangeUsedHuf: string, at = weekday) {
+function hufQuote(
+  plan: RevolutPersonalPlan,
+  rollingThirtyDayExchangeUsedHuf: string,
+  at = weekday,
+) {
   return calculateRevolutPersonalQuote({
     sourceCurrency: "HUF",
     targetCurrency: "EUR",
     sourceAmount: "100000",
     displayedBaseRate: "0.0025",
-    personalContext: { plan, monthlyExchangeUsedHuf },
+    personalContext: { plan, rollingThirtyDayExchangeUsedHuf },
     at,
   });
 }
@@ -81,7 +85,7 @@ describe("Revolut Hungary personal fee policy", () => {
         targetCurrency: "HUF",
         sourceAmount: "1000",
         displayedBaseRate: "400",
-        personalContext: { plan: "STANDARD", monthlyExchangeUsedHuf: "0" },
+        personalContext: { plan: "STANDARD", rollingThirtyDayExchangeUsedHuf: "0" },
         at: weekday,
       }),
     ).toMatchObject({
@@ -102,7 +106,7 @@ describe("Revolut Hungary personal fee policy", () => {
       targetCurrency: "HUF",
       sourceAmount: "1000.123456789",
       displayedBaseRate: "392.12345678901234",
-      personalContext: { plan: "ULTRA", monthlyExchangeUsedHuf: "0" },
+      personalContext: { plan: "ULTRA", rollingThirtyDayExchangeUsedHuf: "0" },
       at: weekday,
     });
 
@@ -123,5 +127,14 @@ describe("Revolut weekend ET boundaries", () => {
   it("follows daylight-saving changes through America/New_York", () => {
     expect(classifyRevolutMarketSession(new Date("2026-07-10T20:59:00.000Z"))).toBe("WEEKDAY");
     expect(classifyRevolutMarketSession(new Date("2026-07-10T21:00:00.000Z"))).toBe("WEEKEND");
+  });
+
+  it("handles the daylight-saving fallback inside the weekend window", () => {
+    // New York repeats 01:00 during this interval; both occurrences remain inside the weekend.
+    expect(classifyRevolutMarketSession(new Date("2026-11-01T05:30:00.000Z"))).toBe("WEEKEND");
+    expect(classifyRevolutMarketSession(new Date("2026-11-01T06:30:00.000Z"))).toBe("WEEKEND");
+    // After the fallback, 18:00 ET is 23:00 UTC.
+    expect(classifyRevolutMarketSession(new Date("2026-11-01T22:59:00.000Z"))).toBe("WEEKEND");
+    expect(classifyRevolutMarketSession(new Date("2026-11-01T23:00:00.000Z"))).toBe("WEEKDAY");
   });
 });

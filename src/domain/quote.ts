@@ -41,13 +41,13 @@ export const revolutPersonalPlanSchema = z.enum(["STANDARD", "PLUS", "PREMIUM", 
 export const revolutPersonalContextSchema = z
   .object({
     plan: revolutPersonalPlanSchema,
-    monthlyExchangeUsedHuf: z
+    rollingThirtyDayExchangeUsedHuf: z
       .string()
       .max(maximumSourceAmountLength)
       .pipe(decimalStringSchema)
       .refine(
         (value) => decimal(value).lessThanOrEqualTo(maximumSourceAmount),
-        `Monthly exchange usage must not exceed ${maximumSourceAmount} HUF`,
+        `Rolling 30-day exchange usage must not exceed ${maximumSourceAmount} HUF`,
       ),
   })
   .strict();
@@ -126,7 +126,7 @@ export const availableQuoteSchema = z.object({
       totalFee: monetaryAmountSchema,
       feeCurrency: currencyCodeSchema,
       fairUsageAllowanceHuf: decimalStringSchema.nullable(),
-      allowanceUsedBeforeQuoteHuf: decimalStringSchema,
+      rollingThirtyDayExchangeUsedBeforeQuoteHuf: decimalStringSchema,
       allowanceConsumedByQuoteHuf: decimalStringSchema,
       remainingAllowanceAfterQuoteHuf: decimalStringSchema.nullable(),
       marketSession: z.enum(["WEEKDAY", "WEEKEND"]),

@@ -51,63 +51,15 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         provider: this.provider,
         request,
         reason:
-          "Revolut Personal requires an explicit plan and monthly HUF exchange usage to calculate fees.",
+          "Revolut Personal requires an explicit plan and rolling 30-day HUF exchange usage to calculate fees.",
         sourceId: `revolut-public-page-${pair.toLowerCase()}`,
         sourceUrl,
       });
     }
 
+    let observation;
     try {
-      const observation = await this.#rateSource.getRate(pair, context?.signal);
-      const calculation = calculateRevolutPersonalQuote({
-        sourceCurrency: request.sourceCurrency,
-        targetCurrency: request.targetCurrency,
-        sourceAmount: request.sourceAmount,
-        displayedBaseRate: observation.rate,
-        personalContext,
-        at: this.#now(),
-      });
-      const fee = (amount: string) => ({ currency: calculation.feeCurrency, amount });
-
-      return availableQuoteSchema.parse({
-        kind: "quote",
-        provider: this.provider,
-        pair: {
-          sourceCurrency: request.sourceCurrency,
-          targetCurrency: request.targetCurrency,
-        },
-        direction: "SELL_SOURCE_BUY_TARGET",
-        sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
-        targetAmount: { currency: request.targetCurrency, amount: calculation.targetAmount },
-        effectiveRate: calculation.effectiveRate,
-        explicitFee: fee(calculation.totalFee),
-        totalCost: fee(calculation.totalFee),
-        rateTimestamp: observation.rateTimestamp,
-        retrievedAt: observation.retrievedAt,
-        sourceType: "LIVE_UNOFFICIAL",
-        status: observation.freshness === "STALE" ? "STALE" : "AVAILABLE",
-        freshness: observation.freshness,
-        reliability: "MEDIUM",
-        sourceId: `revolut-public-page-${pair.toLowerCase()}`,
-        sourceUrl: observation.sourceUrl,
-        customerPlan: personalContext.plan,
-        disclaimer: revolutIndicativeWarning,
-        providerDetails: {
-          type: "REVOLUT_PERSONAL",
-          plan: calculation.plan,
-          displayedBaseRate: calculation.displayedBaseRate,
-          fairUsageFee: fee(calculation.fairUsageFee),
-          weekendFee: fee(calculation.weekendFee),
-          totalFee: fee(calculation.totalFee),
-          feeCurrency: calculation.feeCurrency,
-          fairUsageAllowanceHuf: calculation.fairUsageAllowanceHuf,
-          allowanceUsedBeforeQuoteHuf: calculation.allowanceUsedBeforeQuoteHuf,
-          allowanceConsumedByQuoteHuf: calculation.allowanceConsumedByQuoteHuf,
-          remainingAllowanceAfterQuoteHuf: calculation.remainingAllowanceAfterQuoteHuf,
-          marketSession: calculation.marketSession,
-          indicativeWarning: revolutIndicativeWarning,
-        },
-      });
+      observation = await this.#rateSource.getRate(pair, context?.signal);
     } catch {
       return createProviderUnavailableResult({
         provider: this.provider,
@@ -118,5 +70,56 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         sourceUrl,
       });
     }
+
+    const calculation = calculateRevolutPersonalQuote({
+      sourceCurrency: request.sourceCurrency,
+      targetCurrency: request.targetCurrency,
+      sourceAmount: request.sourceAmount,
+      displayedBaseRate: observation.rate,
+      personalContext,
+      at: this.#now(),
+    });
+    const fee = (amount: string) => ({ currency: calculation.feeCurrency, amount });
+
+    return availableQuoteSchema.parse({
+      kind: "quote",
+      provider: this.provider,
+      pair: {
+        sourceCurrency: request.sourceCurrency,
+        targetCurrency: request.targetCurrency,
+      },
+      direction: "SELL_SOURCE_BUY_TARGET",
+      sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
+      targetAmount: { currency: request.targetCurrency, amount: calculation.targetAmount },
+      effectiveRate: calculation.effectiveRate,
+      explicitFee: fee(calculation.totalFee),
+      totalCost: fee(calculation.totalFee),
+      rateTimestamp: observation.rateTimestamp,
+      retrievedAt: observation.retrievedAt,
+      sourceType: "LIVE_UNOFFICIAL",
+      status: observation.freshness === "STALE" ? "STALE" : "AVAILABLE",
+      freshness: observation.freshness,
+      reliability: "MEDIUM",
+      sourceId: `revolut-public-page-${pair.toLowerCase()}`,
+      sourceUrl: observation.sourceUrl,
+      customerPlan: personalContext.plan,
+      disclaimer: revolutIndicativeWarning,
+      providerDetails: {
+        type: "REVOLUT_PERSONAL",
+        plan: calculation.plan,
+        displayedBaseRate: calculation.displayedBaseRate,
+        fairUsageFee: fee(calculation.fairUsageFee),
+        weekendFee: fee(calculation.weekendFee),
+        totalFee: fee(calculation.totalFee),
+        feeCurrency: calculation.feeCurrency,
+        fairUsageAllowanceHuf: calculation.fairUsageAllowanceHuf,
+        rollingThirtyDayExchangeUsedBeforeQuoteHuf:
+          calculation.rollingThirtyDayExchangeUsedBeforeQuoteHuf,
+        allowanceConsumedByQuoteHuf: calculation.allowanceConsumedByQuoteHuf,
+        remainingAllowanceAfterQuoteHuf: calculation.remainingAllowanceAfterQuoteHuf,
+        marketSession: calculation.marketSession,
+        indicativeWarning: revolutIndicativeWarning,
+      },
+    });
   }
 }

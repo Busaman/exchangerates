@@ -39,7 +39,7 @@ export function runProviderAdapterContract({
                 result.providerDetails.fairUsageFee.amount,
                 result.providerDetails.weekendFee.amount,
                 result.providerDetails.totalFee.amount,
-                result.providerDetails.allowanceUsedBeforeQuoteHuf,
+                result.providerDetails.rollingThirtyDayExchangeUsedBeforeQuoteHuf,
                 result.providerDetails.allowanceConsumedByQuoteHuf,
               ]
             : []),
