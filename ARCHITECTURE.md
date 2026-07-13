@@ -48,7 +48,10 @@ Adding a provider requires its identifier/schema entry, one isolated adapter, co
 registry registration—quote orchestration and ranking contain no provider-specific branches.
 Registrations may set a provider-specific timeout. The service default is 2 seconds; enabled
 Revolut uses 10 seconds without extending the deadline of mock or future providers. Revolut is
-registered `UNAVAILABLE` unless the validated `REVOLUT_ADAPTER_ENABLED=true` gate is set.
+registered `UNAVAILABLE` unless `REVOLUT_ADAPTER_ENABLED` is exactly the lowercase string `true`.
+Missing, empty, `false`, or any unrecognized value fails safely to disabled and cannot prevent
+registry or route-module creation; this optional experimental flag is not parsed by a throwing
+module-scope schema and affects no other provider.
 
 The Revolut personal adapter is isolated under `src/providers/revolut`. Its dedicated client fetches
 only `GET https://www.revolut.com/api/exchange/quote` with allowlisted `amount`, `country=HU`,
@@ -82,6 +85,14 @@ recipient divided by sender using decimal.js. It neither reconstructs nor rounds
 adds a manually calculated fee. Because the public request has no account identity or prior-usage
 parameter, results explicitly carry `FULL_ALLOWANCE_ASSUMED`; they cannot represent consumed rolling
 30-day allowance and must be confirmed in the app.
+
+Every available quote exposes a separate `rankingEffectiveRate`. When a validated source-currency
+`providerDetails.totalSourceCost` exists, it is `targetAmount / totalSourceCost`; otherwise it is
+`targetAmount / sourceAmount`. This compares fees deducted before conversion with fees charged on
+top using one decimal.js metric. Ranking is descending by this value, with ascending provider ID as
+the deterministic tie-break. The provider's raw/displayed and provider-specific effective rates keep
+their original meanings. Present-but-malformed, non-positive, or wrong-currency total source cost is
+a provider-invalid response; fallback applies only when that provider-specific field is absent.
 
 ## Cache and update strategy
 
@@ -117,7 +128,7 @@ warning and medium reliability. The endpoint's rate timestamp is distinct from N
 `POST /api/v1/quotes` validates a strict request, including a 30-character amount limit and
 currency-specific minimums of 0.01 EUR and 100 HUF, resolves selected adapters through the registry,
 calls them in parallel with per-provider abort/timeout support, validates normalized results, ranks
-only fresh `AVAILABLE` quotes with positive payouts, and validates the response before returning it. A valid request always
+only fresh `AVAILABLE` quotes with positive payouts by cost-normalized effective rate, and validates the response before returning it. A valid request always
 gets a `200` domain response even when all providers are unavailable/failed; malformed requests get
 structured `400` errors and unexpected route failures get sanitized `500` errors.
 

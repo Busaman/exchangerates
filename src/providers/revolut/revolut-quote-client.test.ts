@@ -99,6 +99,14 @@ describe("parseRevolutQuoteResponse", () => {
     },
   );
 
+  it("marks the multi-plan fixture as synthetic contract coverage", () => {
+    expect(payload(planFeesJson)).toMatchObject({ _synthetic: true });
+    expect(parse(planFeesJson, { ...hufRequest, sourceAmount: "1100000" })).toMatchObject({
+      plan: "STANDARD",
+      totalFee: { amount: "7500" },
+    });
+  });
+
   it.each(["STANDARD", "PLUS", "PREMIUM", "METAL", "ULTRA"] as const)(
     "normalizes a zero-fee below-allowance %s fixture without adding manual fees",
     (plan) => {
@@ -113,7 +121,7 @@ describe("parseRevolutQuoteResponse", () => {
   it("fails closed when the selected plan is missing", () => {
     const withoutMetal = hufEurJson.replace('"id": "METAL"', '"id": "REMOVED"');
     expect(() => parse(withoutMetal, { ...hufRequest, plan: "METAL" })).toThrow(
-      "SELECTED_PLAN_MISSING_OR_DUPLICATED",
+      "SELECTED_PLAN_MISSING",
     );
   });
 
@@ -146,7 +154,7 @@ describe("parseRevolutQuoteResponse", () => {
     );
   });
 
-  it("rejects inconsistent fee currency, total and source-side cost", () => {
+  it("rejects inconsistent fee currency and source-side cost beyond one minor unit", () => {
     expect(() =>
       parse(
         hufEurJson.replace(
@@ -159,9 +167,51 @@ describe("parseRevolutQuoteResponse", () => {
       parse(
         hufEurJson.replace(
           '"cost": { "amount": 100000, "currency": "HUF" }',
-          '"cost": { "amount": 100001, "currency": "HUF" }',
+          '"cost": { "amount": 100002, "currency": "HUF" }',
         ),
       ),
+    ).toThrow("INCONSISTENT_TOTAL_SOURCE_COST");
+  });
+
+  it("accepts total source cost differences up to one currency minor unit", () => {
+    const hufBoundary = parse(
+      hufEurJson.replace(
+        '"cost": { "amount": 100000, "currency": "HUF" }',
+        '"cost": { "amount": 100001, "currency": "HUF" }',
+      ),
+    );
+    expect(hufBoundary.totalSourceCost.amount).toBe("100001");
+
+    const eurRequest: RevolutQuoteRequest = {
+      pair: "EUR-HUF",
+      sourceAmount: "1000",
+      plan: "STANDARD",
+    };
+    const withinEurMinorUnit = parseRevolutQuoteResponse({
+      payload: payload(
+        eurHufJson.replace(
+          '"cost": { "amount": 1000, "currency": "EUR" }',
+          '"cost": { "amount": 1000.01, "currency": "EUR" }',
+        ),
+      ),
+      request: eurRequest,
+      retrievedAt: new Date(1783951201280 + 60_000),
+      sourceUrl: "https://www.revolut.com/api/exchange/quote",
+    });
+    expect(withinEurMinorUnit.totalSourceCost.amount).toBe("1000.01");
+
+    expect(() =>
+      parseRevolutQuoteResponse({
+        payload: payload(
+          eurHufJson.replace(
+            '"cost": { "amount": 1000, "currency": "EUR" }',
+            '"cost": { "amount": 1000.02, "currency": "EUR" }',
+          ),
+        ),
+        request: eurRequest,
+        retrievedAt: new Date(1783951201280 + 60_000),
+        sourceUrl: "https://www.revolut.com/api/exchange/quote",
+      }),
     ).toThrow("INCONSISTENT_TOTAL_SOURCE_COST");
   });
 

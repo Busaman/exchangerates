@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { availableQuoteSchema, type Provider, type QuoteResult } from "@/domain/quote";
+import { decimalToPlainString, decimal } from "@/domain/decimal";
+import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
+import {
+  availableQuoteSchema,
+  type AvailableQuote,
+  type Provider,
+  type ProviderIdentifier,
+  type QuoteResult,
+} from "@/domain/quote";
 import { MockProviderAdapter, createMockQuote } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import {
@@ -18,6 +26,68 @@ const deterministicDependencies = {
 
 function customAdapter(provider: Provider, getQuote: ProviderAdapter["getQuote"]): ProviderAdapter {
   return { provider, getQuote };
+}
+
+function comparisonQuote({
+  providerId,
+  targetAmount,
+  totalSourceCost,
+}: {
+  providerId: Extract<ProviderIdentifier, "MOCK_PROVIDER" | "REVOLUT">;
+  targetAmount: string;
+  totalSourceCost?: string;
+}): AvailableQuote {
+  const sourceAmount = { currency: "EUR", amount: "1000" } as const;
+  const target = { currency: "HUF", amount: targetAmount } as const;
+  const normalizedTotalSourceCost =
+    totalSourceCost === undefined
+      ? undefined
+      : ({ currency: "EUR", amount: totalSourceCost } as const);
+  const onTopFee =
+    totalSourceCost === undefined
+      ? undefined
+      : decimalToPlainString(decimal(totalSourceCost).minus(sourceAmount.amount));
+
+  return availableQuoteSchema.parse({
+    ...createMockQuote({
+      providerId: "MOCK_PROVIDER",
+      sourceCurrency: "EUR",
+      targetCurrency: "HUF",
+      sourceAmount: sourceAmount.amount,
+      requestedAt: generatedAt,
+    }),
+    provider: {
+      id: providerId,
+      name: providerId === "REVOLUT" ? "Revolut Personal (HU)" : "Fee-deducted provider",
+    },
+    sourceAmount,
+    targetAmount: target,
+    effectiveRate: decimalToPlainString(decimal(targetAmount).dividedBy(sourceAmount.amount)),
+    rankingEffectiveRate: calculateRankingEffectiveRate({
+      sourceAmount,
+      targetAmount: target,
+      ...(normalizedTotalSourceCost === undefined
+        ? {}
+        : { totalSourceCost: normalizedTotalSourceCost }),
+    }),
+    sourceType: providerId === "REVOLUT" ? "LIVE_UNOFFICIAL" : "MOCK",
+    ...(normalizedTotalSourceCost === undefined
+      ? { providerDetails: undefined }
+      : {
+          customerPlan: "STANDARD",
+          providerDetails: {
+            type: "REVOLUT_PERSONAL",
+            plan: "STANDARD",
+            displayedBaseRate: "400",
+            fxFee: { currency: "EUR", amount: onTopFee },
+            totalFee: { currency: "EUR", amount: onTopFee },
+            feeCurrency: "EUR",
+            totalSourceCost: normalizedTotalSourceCost,
+            allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
+            indicativeWarning: "Best-case public quote; verify in app.",
+          },
+        }),
+  });
 }
 
 describe("provider registry", () => {
@@ -75,6 +145,112 @@ describe("getQuotes", () => {
     expect(response.sourceStatus).toBe("PARTIAL_SUCCESS");
     expect(response.warnings).toEqual(["MOCK_DATA"]);
     expect(response.issues[0]?.kind).toBe("unavailable");
+  });
+
+  it("ranks a fee-deducted quote above a higher payout with worse fee-on-top cost", async () => {
+    const feeDeducted = comparisonQuote({
+      providerId: "MOCK_PROVIDER",
+      targetAmount: "990",
+    });
+    const feeOnTop = comparisonQuote({
+      providerId: "REVOLUT",
+      targetAmount: "1000",
+      totalSourceCost: "1020",
+    });
+    const registry = new ProviderAdapterRegistry([
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(feeOnTop.provider, async () => feeOnTop),
+      },
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(feeDeducted.provider, async () => feeDeducted),
+      },
+    ]);
+
+    const response = await getQuotes(
+      {
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        providers: ["REVOLUT", "MOCK_PROVIDER"],
+      },
+      { ...deterministicDependencies, registry },
+    );
+
+    expect(feeOnTop.targetAmount.amount).toBe("1000");
+    expect(feeDeducted.targetAmount.amount).toBe("990");
+    expect(feeOnTop.rankingEffectiveRate).toBe("0.9803921568627450980392156862745098039216");
+    expect(feeDeducted.rankingEffectiveRate).toBe("0.99");
+    expect(response.bestProviderId).toBe("MOCK_PROVIDER");
+    expect(response.quotes.map((quote) => quote.provider.id)).toEqual(["MOCK_PROVIDER", "REVOLUT"]);
+  });
+
+  it("uses provider-id ascending as the deterministic tie-break for equal zero-fee rates", async () => {
+    const mock = comparisonQuote({ providerId: "MOCK_PROVIDER", targetAmount: "1000" });
+    const revolut = comparisonQuote({
+      providerId: "REVOLUT",
+      targetAmount: "1000",
+      totalSourceCost: "1000",
+    });
+    const registry = new ProviderAdapterRegistry([
+      { status: "SUPPORTED", adapter: customAdapter(revolut.provider, async () => revolut) },
+      { status: "SUPPORTED", adapter: customAdapter(mock.provider, async () => mock) },
+    ]);
+
+    const response = await getQuotes(
+      {
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        providers: ["REVOLUT", "MOCK_PROVIDER"],
+      },
+      { ...deterministicDependencies, registry },
+    );
+
+    expect(mock.rankingEffectiveRate).toBe("1");
+    expect(revolut.rankingEffectiveRate).toBe("1");
+    expect(response.bestProviderId).toBe("MOCK_PROVIDER");
+  });
+
+  it.each([
+    ["wrong currency", { currency: "HUF", amount: "1020" }],
+    ["malformed amount", { currency: "EUR", amount: "not-a-decimal" }],
+  ])("fails closed for %s totalSourceCost instead of falling back", async (_case, cost) => {
+    const valid = comparisonQuote({
+      providerId: "REVOLUT",
+      targetAmount: "1000",
+      totalSourceCost: "1020",
+    });
+    const malformed = {
+      ...valid,
+      providerDetails: { ...valid.providerDetails, totalSourceCost: cost },
+    } as unknown as QuoteResult;
+    const registry = new ProviderAdapterRegistry([
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(valid.provider, async () => malformed),
+      },
+    ]);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await getQuotes(
+      {
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        providers: ["REVOLUT"],
+      },
+      { ...deterministicDependencies, registry },
+    );
+
+    expect(response.bestProviderId).toBeNull();
+    expect(response.quotes).toEqual([]);
+    expect(response.issues[0]).toMatchObject({
+      kind: "error",
+      errorCode: "PROVIDER_INVALID_RESPONSE",
+    });
+    consoleError.mockRestore();
   });
 
   it("uses every registered provider when provider selection is omitted", async () => {

@@ -5,10 +5,12 @@ import {
   type QuoteRequest,
 } from "@/domain/quote";
 import { decimal, decimalToPlainString } from "@/domain/decimal";
+import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
 import type { ProviderAdapter, ProviderAdapterContext } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 import { buildRevolutQuoteUrl, revolutPairKey } from "@/providers/revolut/revolut-config";
 import {
+  RevolutQuoteClientError,
   RevolutPublicQuoteClient,
   type RevolutQuoteClient,
 } from "@/providers/revolut/revolut-quote-client";
@@ -61,7 +63,16 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         { pair, sourceAmount: request.sourceAmount, plan: personalContext.plan },
         context?.signal,
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof RevolutQuoteClientError && error.code === "SELECTED_PLAN_MISSING") {
+        return createProviderUnavailableResult({
+          provider: this.provider,
+          request,
+          reason: `The public Revolut endpoint did not return the requested ${personalContext.plan} plan.`,
+          sourceId: "revolut-public-json-quote",
+          sourceUrl,
+        });
+      }
       return createProviderUnavailableResult({
         provider: this.provider,
         request,
@@ -75,6 +86,11 @@ export class RevolutProviderAdapter implements ProviderAdapter {
     const effectiveRate = decimalToPlainString(
       decimal(observation.targetAmount).dividedBy(request.sourceAmount),
     );
+    const rankingEffectiveRate = calculateRankingEffectiveRate({
+      sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
+      targetAmount: { currency: request.targetCurrency, amount: observation.targetAmount },
+      totalSourceCost: observation.totalSourceCost,
+    });
 
     return availableQuoteSchema.parse({
       kind: "quote",
@@ -87,6 +103,7 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
       targetAmount: { currency: request.targetCurrency, amount: observation.targetAmount },
       effectiveRate,
+      rankingEffectiveRate,
       explicitFee: observation.totalFee,
       totalCost: observation.totalFee,
       rateTimestamp: observation.rateTimestamp,

@@ -1,5 +1,5 @@
 import { providerIdentifierSchema, type ProviderIdentifier } from "@/domain/quote";
-import { getRuntimeEnv } from "@/lib/env";
+import { resolveRevolutAdapterEnabled } from "@/lib/env";
 import { MockProviderAdapter } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
@@ -84,5 +84,5 @@ export function createProviderRegistry({
 }
 
 export const providerRegistry = createProviderRegistry({
-  revolutEnabled: getRuntimeEnv().REVOLUT_ADAPTER_ENABLED,
+  revolutEnabled: resolveRevolutAdapterEnabled(process.env.REVOLUT_ADAPTER_ENABLED),
 });

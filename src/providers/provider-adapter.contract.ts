@@ -31,6 +31,7 @@ export function runProviderAdapterContract({
           result.sourceAmount.amount,
           result.targetAmount.amount,
           result.effectiveRate,
+          result.rankingEffectiveRate,
           result.explicitFee.amount,
           result.totalCost.amount,
           ...(result.providerDetails?.type === "REVOLUT_PERSONAL"
@@ -55,6 +56,7 @@ export function runProviderAdapterContract({
         expect(result).not.toHaveProperty("sourceAmount");
         expect(result).not.toHaveProperty("targetAmount");
         expect(result).not.toHaveProperty("effectiveRate");
+        expect(result).not.toHaveProperty("rankingEffectiveRate");
         expect(result).not.toHaveProperty("explicitFee");
         expect(result).not.toHaveProperty("totalCost");
       }

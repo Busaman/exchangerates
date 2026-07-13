@@ -14,6 +14,7 @@ import {
   type QuoteResult,
   type SupportedCurrencyCode,
 } from "@/domain/quote";
+import { bestResultBadgeLabel, isFullAllowanceAssumedQuote } from "@/components/comparison-labels";
 
 const currencyNames = {
   EUR: "EUR · euró",
@@ -162,7 +163,8 @@ export function ComparisonTool() {
               Váltási összehasonlítás
             </h2>
             <p className="mt-1 text-sm text-slate-400">
-              A kapott összeg szerint rendezve, minden ismert díj levonása után.
+              A teljes forrásoldali költségre jutó kapott összeg szerint rendezve, minden ismert
+              díjat figyelembe véve.
             </p>
           </div>
           <span className="rounded-md bg-rose-400/10 px-2.5 py-1 font-mono text-xs font-semibold text-rose-200">
@@ -295,11 +297,14 @@ export function ComparisonTool() {
               >
                 <td className="px-5 py-5 sm:px-7">
                   <div className="font-semibold text-white">{result.provider.name}</div>
-                  {data?.bestProviderId === result.provider.id && (
+                  {isFullAllowanceAssumedQuote(result) ? (
+                    <span className="mt-1 block text-xs font-medium text-amber-200">
+                      Best-case · teljes rendelkezésre álló keret feltételezve
+                    </span>
+                  ) : null}
+                  {bestResultBadgeLabel(result, data?.bestProviderId) !== null && (
                     <span className="mt-1 inline-block text-xs font-medium text-emerald-300">
-                      {result.kind === "quote" && result.sourceType === "MOCK"
-                        ? "Legjobb elérhető mock eredmény"
-                        : "Legjobb elérhető indikatív eredmény"}
+                      {bestResultBadgeLabel(result, data?.bestProviderId)}
                     </span>
                   )}
                 </td>
@@ -316,8 +321,14 @@ export function ComparisonTool() {
                           {result.pair.targetCurrency}
                         </span>
                       ) : null}
-                      1 {result.pair.sourceCurrency} = {formatRate(result.effectiveRate)}{" "}
-                      {result.pair.targetCurrency}
+                      <span className="block">
+                        Szolgáltatói effektív: 1 {result.pair.sourceCurrency} ={" "}
+                        {formatRate(result.effectiveRate)} {result.pair.targetCurrency}
+                      </span>
+                      <span className="mt-1 block text-xs text-emerald-200">
+                        Költségnormalizált rangsorolási ráta: 1 {result.pair.sourceCurrency} ={" "}
+                        {formatRate(result.rankingEffectiveRate)} {result.pair.targetCurrency}
+                      </span>
                     </td>
                     <td className="px-4 py-5 text-sm text-slate-300">
                       {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
@@ -394,8 +405,9 @@ export function ComparisonTool() {
         {data?.warnings.includes("REVOLUT_INDICATIVE") ? (
           <>
             <strong className="text-amber-100">Revolut:</strong> a nyilvános JSON-konverter ajánlata
-            LIVE_UNOFFICIAL besorolású és indikatív. Nem ismeri a fiókod tényleges kerethasználatát;
-            a végrehajtható árfolyamot és díjakat mindig ellenőrizd a Revolut appban.{" "}
+            LIVE_UNOFFICIAL besorolású, indikatív best-case eredmény, amely teljes rendelkezésre
+            álló keretet feltételez. Nem ismeri a fiókod tényleges kerethasználatát; a végrehajtható
+            árfolyamot és díjakat mindig ellenőrizd a Revolut appban.{" "}
           </>
         ) : null}
         {view.status === "loading" ? "A quote API válaszára várunk." : null}

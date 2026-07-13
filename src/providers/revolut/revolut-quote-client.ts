@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { decimal, decimalToPlainString } from "@/domain/decimal";
+import { decimal, decimalToPlainString, isWithinCurrencyMinorUnit } from "@/domain/decimal";
 import {
   revolutPersonalPlanSchema,
   supportedCurrencyCodeSchema,
@@ -131,7 +131,8 @@ function selectPlan(plans: readonly unknown[], plan: RevolutPersonalPlan) {
     const parsed = z.object({ id: z.string() }).safeParse(candidate);
     return parsed.success && parsed.data.id === plan;
   });
-  if (matches.length !== 1) throw publicError("SELECTED_PLAN_MISSING_OR_DUPLICATED");
+  if (matches.length === 0) throw publicError("SELECTED_PLAN_MISSING");
+  if (matches.length > 1) throw publicError("SELECTED_PLAN_DUPLICATED");
   const selected = selectedPlanSchema.safeParse(matches[0]);
   if (!selected.success) throw publicError("SELECTED_PLAN_FEES_INVALID");
   return selected.data;
@@ -197,7 +198,13 @@ export function parseRevolutQuoteResponse({
     throw publicError("INCONSISTENT_FEE_CURRENCY");
   }
   if (totalFee.lessThan(fxFee)) throw publicError("INCONSISTENT_FEE_TOTAL");
-  if (!totalSourceCost.equals(senderAmount.plus(totalFee))) {
+  if (
+    !isWithinCurrencyMinorUnit(
+      totalSourceCost,
+      senderAmount.plus(totalFee),
+      expected.sourceCurrency,
+    )
+  ) {
     throw publicError("INCONSISTENT_TOTAL_SOURCE_COST");
   }
 

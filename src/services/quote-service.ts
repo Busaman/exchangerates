@@ -76,8 +76,18 @@ function publicReasonFor(errorCode: ProviderErrorCode): string {
   return "The provider quote could not be retrieved.";
 }
 
-function isRankableQuote(result: QuoteResult): result is AvailableQuote {
+function isRankableQuote(result: QuoteResult): boolean {
   return result.kind === "quote" && result.status === "AVAILABLE" && result.freshness !== "STALE";
+}
+
+function compareRankableQuotes(left: AvailableQuote, right: AvailableQuote): number {
+  const rateComparison = compareDecimalStrings(
+    right.rankingEffectiveRate,
+    left.rankingEffectiveRate,
+  );
+  if (rateComparison !== 0) return rateComparison;
+  if (left.provider.id === right.provider.id) return 0;
+  return left.provider.id < right.provider.id ? -1 : 1;
 }
 
 export async function getQuotes(
@@ -131,13 +141,19 @@ export async function getQuotes(
     }),
   );
 
-  const quotes = results.filter((result): result is AvailableQuote => result.kind === "quote");
+  const quotes = results
+    .filter((result): result is AvailableQuote => result.kind === "quote")
+    .toSorted((left, right) => {
+      const leftRankable = isRankableQuote(left);
+      const rightRankable = isRankableQuote(right);
+      if (leftRankable && rightRankable) return compareRankableQuotes(left, right);
+      if (leftRankable) return -1;
+      if (rightRankable) return 1;
+      if (left.provider.id === right.provider.id) return 0;
+      return left.provider.id < right.provider.id ? -1 : 1;
+    });
   const issues = results.filter((result) => result.kind !== "quote");
-  const rankableQuotes = results
-    .filter(isRankableQuote)
-    .toSorted((left, right) =>
-      compareDecimalStrings(right.targetAmount.amount, left.targetAmount.amount),
-    );
+  const rankableQuotes = quotes.filter(isRankableQuote);
   const bestProviderId = rankableQuotes[0]?.provider.id ?? null;
   const sourceStatus =
     rankableQuotes.length === 0

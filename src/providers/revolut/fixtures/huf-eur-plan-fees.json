@@ -1,4 +1,5 @@
 {
+  "_synthetic": true,
   "sender": { "amount": 1100000, "currency": "HUF" },
   "recipient": { "amount": 3051.74, "currency": "EUR" },
   "rate": {

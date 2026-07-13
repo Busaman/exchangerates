@@ -69,7 +69,11 @@ invalid fields or access failure become unavailable and no fallback is allowed.
 Returned sender amount and currency direction must match exactly. The only numerical tolerance is a
 configurable 0.5% relative check between raw rate and actual recipient/sender, allowing for the
 endpoint's displayed recipient precision; normalization never changes the endpoint values. Fee
-currency and total source-side cost checks are exact decimal identities.
+currency checks are exact; source-cost arithmetic uses only the minor-unit tolerance below.
+
+Because endpoint monetary values use display precision, `fees.cost` may differ from
+`sender.amount + fees.total` by at most one source-currency minor unit: 1 HUF or 0.01 EUR. The
+boundary is inclusive; a larger difference is invalid. The returned cost is preserved unchanged.
 
 Fixtures under `src/providers/revolut/fixtures` are sanitized JSON contract examples. Unit tests
 never call Revolut. The optional `pnpm test:revolut:live` script runs only with
@@ -79,11 +83,19 @@ amount/direction/plan-specific single-flight and a 15-minute stale ceiling. Nega
 retry storms but do not renew timestamps or stale age. Only a last successful observation for the
 same material request can become `STALE`; it is never ranked.
 
+`huf-eur-plan-fees.json` is synthetic multi-plan contract coverage and carries top-level
+`"_synthetic": true`. It demonstrates strict selection and fee normalization only; it is not live
+plan-availability or fee evidence.
+
 For a successful quote, select exactly the requested plan and validate `fees.fx`, `fees.total`, and
 `fees.cost`. Their currencies must equal the source currency, total fee cannot be below FX fee, and
 total source-side cost must equal sender amount plus total fee. Use the endpoint's actual recipient
 amount; derive effective rate with decimal.js. Do not manually add fair-usage/weekend fees or apply a
 second payout calculation.
+
+If the requested exact plan is absent, return a numeric-field-free unavailable result explaining
+that the public Revolut endpoint did not return that plan. Do not collapse this into a generic fetch
+failure and never substitute Standard.
 
 The endpoint has no authenticated account or prior-usage input and therefore cannot know actual
 rolling-30-day allowance usage. NeoRate has removed the old usage field rather than claim false
@@ -110,3 +122,14 @@ Revolut selection returns a numeric-field-free unavailable result and makes no e
 the flag only in controlled staging until server-side access, schema success and legal/product
 approval satisfy the approval gate. The registry's 10-second Revolut deadline does not change the
 2-second service default used by other providers.
+
+The gate is typo-safe: only exact lowercase `true` enables Revolut. Missing, empty, `false`, `yes`,
+`1`, `TRUE`, or any other value disables it without throwing or blocking other providers. An
+unrecognized non-empty value may be logged server-side.
+
+Comparison uses `rankingEffectiveRate = targetAmount / totalSourceCost` when this validated
+source-currency Revolut cost exists. Providers without that optional field use
+`targetAmount / sourceAmount`. Sort descending; exact ties use ascending provider ID. A malformed,
+zero, or wrong-currency supplied cost is invalid rather than silently ignored. A Revolut result with
+`FULL_ALLOWANCE_ASSUMED` remains visible but is an optimistic best-case quote; a winning UI badge is
+explicitly qualified and final app verification remains mandatory.

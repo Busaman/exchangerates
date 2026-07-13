@@ -144,6 +144,13 @@ converter `sourceUrl`, source and retrieval timestamps, and `providerDetails.typ
 text, and `allowanceAssumption: FULL_ALLOWANCE_ASSUMED`. Responses also include
 `REVOLUT_INDICATIVE`; the final quote must be checked in-app.
 
+Every successful quote also exposes `rankingEffectiveRate`. It equals `targetAmount /
+providerDetails.totalSourceCost` when a valid source-currency total cost exists, otherwise
+`targetAmount / sourceAmount`. Quotes sort descending by this cost-normalized decimal.js value; exact
+ties use ascending provider ID. Malformed provider-supplied cost data fails closed instead of using
+the fallback silently. A winning `FULL_ALLOWANCE_ASSUMED` Revolut quote is labeled as an indicative
+best-case result, not an exact executable best quote.
+
 The server fetches only:
 
 - `GET https://www.revolut.com/api/exchange/quote`
@@ -174,7 +181,7 @@ duplicates the endpoint fee with a manually calculated allowance or weekend fee.
 | --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
 | `DATABASE_URL`              | For database commands/features | PostgreSQL connection URL; validated lazily before a DB client is created                  |
 | `LOG_LEVEL`                 | No                             | `debug`, `info`, `warn`, or `error`; defaults to `info`                                    |
-| `REVOLUT_ADAPTER_ENABLED`   | No                             | Experimental opt-in; exactly `true` enables public JSON requests, defaults to `false`      |
+| `REVOLUT_ADAPTER_ENABLED`   | No                             | Only exact lowercase `true` enables Revolut; every other value safely disables it          |
 | `REVOLUT_LIVE_TEST_ENABLED` | No                             | Exactly `true` enables the explicit manual endpoint probe; normal tests never call Revolut |
 
 Never commit `.env` files or credentials. `.env.example` contains documentation-only values.

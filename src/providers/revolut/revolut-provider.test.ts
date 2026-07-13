@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { quoteApiRequestSchema } from "@/domain/quote-api";
+import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
 import type { QuoteRequest } from "@/domain/quote";
 import { runProviderAdapterContract } from "@/providers/provider-adapter.contract";
 import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
@@ -7,6 +8,7 @@ import type {
   RevolutQuoteClient,
   RevolutQuoteObservation,
 } from "@/providers/revolut/revolut-quote-client";
+import { RevolutQuoteClientError } from "@/providers/revolut/revolut-quote-client";
 
 const requestedAt = "2026-07-13T16:03:00.000Z";
 const observation: RevolutQuoteObservation = {
@@ -60,6 +62,7 @@ describe("RevolutProviderAdapter", () => {
       customerPlan: "STANDARD",
       targetAmount: { amount: "277.43", currency: "EUR" },
       effectiveRate: "0.0027743",
+      rankingEffectiveRate: "0.0027743",
       explicitFee: { amount: "0", currency: "HUF" },
       sourceUrl: observation.sourceUrl,
       providerDetails: {
@@ -130,6 +133,25 @@ describe("RevolutProviderAdapter", () => {
     expect(result).not.toHaveProperty("effectiveRate");
   });
 
+  it("returns a plan-specific numeric-field-free reason when the endpoint omits the plan", async () => {
+    const client: RevolutQuoteClient = {
+      getQuote: vi.fn(async () =>
+        Promise.reject(new RevolutQuoteClientError("SELECTED_PLAN_MISSING")),
+      ),
+    };
+    const result = await new RevolutProviderAdapter({ quoteClient: client }).getQuote({
+      ...contractRequest,
+      providerContexts: { REVOLUT: { plan: "PLUS" } },
+    });
+
+    expect(result).toMatchObject({
+      kind: "unavailable",
+      reason: "The public Revolut endpoint did not return the requested PLUS plan.",
+    });
+    expect(result).not.toHaveProperty("targetAmount");
+    expect(result).not.toHaveProperty("rankingEffectiveRate");
+  });
+
   it("preserves STALE endpoint classification without ranking it live", async () => {
     const result = await new RevolutProviderAdapter({
       quoteClient: quoteClient({ ...observation, freshness: "STALE" }),
@@ -157,6 +179,13 @@ describe("RevolutProviderAdapter", () => {
       totalCost: { amount: "7500" },
       providerDetails: { totalSourceCost: { amount: "1107500" } },
     });
+    expect(result.kind === "quote" ? result.rankingEffectiveRate : null).toBe(
+      calculateRankingEffectiveRate({
+        sourceAmount: { currency: "HUF", amount: "1100000" },
+        targetAmount: { currency: "EUR", amount: "3051.74" },
+        totalSourceCost: { currency: "HUF", amount: "1107500" },
+      }),
+    );
   });
 
   it.each(["BUSINESS", "PRO"])("does not accept the %s plan", (plan) => {

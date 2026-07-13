@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { decimalPattern } from "@/domain/decimal";
+import { decimal, decimalPattern } from "@/domain/decimal";
+import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
 
 export const providerIdentifierSchema = z.enum([
   "MOCK_PROVIDER",
@@ -83,44 +84,112 @@ export const quoteRequestSchema = z
     message: "Source and target currency must differ",
   });
 
-export const availableQuoteSchema = z.object({
-  kind: z.literal("quote"),
-  provider: providerSchema,
-  pair: currencyPairSchema,
-  direction: z.literal("SELL_SOURCE_BUY_TARGET"),
-  sourceAmount: positiveMonetaryAmountSchema,
-  targetAmount: positiveMonetaryAmountSchema,
-  effectiveRate: positiveDecimalStringSchema,
-  explicitFee: monetaryAmountSchema,
-  totalCost: monetaryAmountSchema,
-  rateTimestamp: z.iso.datetime(),
-  retrievedAt: z.iso.datetime(),
-  sourceType: quoteSourceTypeSchema,
-  status: z.enum(["AVAILABLE", "STALE"]),
-  freshness: freshnessSchema,
-  reliability: reliabilitySchema,
-  sourceId: z.string().min(1).optional(),
-  sourceUrl: z.url().optional(),
-  customerPlan: z.string().min(1).optional(),
-  disclaimer: z.string().min(1).optional(),
-  providerDetails: z
-    .object({
-      type: z.literal("REVOLUT_PERSONAL"),
-      plan: revolutPersonalPlanSchema,
-      displayedBaseRate: positiveDecimalStringSchema,
-      fxFee: monetaryAmountSchema,
-      totalFee: monetaryAmountSchema,
-      feeCurrency: currencyCodeSchema,
-      totalSourceCost: monetaryAmountSchema,
-      fxTooltip: z.string().min(1).optional(),
-      planTooltipLong: z.string().min(1).optional(),
-      planTooltipShort: z.string().min(1).optional(),
-      allowanceAssumption: z.literal("FULL_ALLOWANCE_ASSUMED"),
-      indicativeWarning: z.string().min(1),
-    })
-    .strict()
-    .optional(),
-});
+export const availableQuoteSchema = z
+  .object({
+    kind: z.literal("quote"),
+    provider: providerSchema,
+    pair: currencyPairSchema,
+    direction: z.literal("SELL_SOURCE_BUY_TARGET"),
+    sourceAmount: positiveMonetaryAmountSchema,
+    targetAmount: positiveMonetaryAmountSchema,
+    effectiveRate: positiveDecimalStringSchema,
+    rankingEffectiveRate: positiveDecimalStringSchema,
+    explicitFee: monetaryAmountSchema,
+    totalCost: monetaryAmountSchema,
+    rateTimestamp: z.iso.datetime(),
+    retrievedAt: z.iso.datetime(),
+    sourceType: quoteSourceTypeSchema,
+    status: z.enum(["AVAILABLE", "STALE"]),
+    freshness: freshnessSchema,
+    reliability: reliabilitySchema,
+    sourceId: z.string().min(1).optional(),
+    sourceUrl: z.url().optional(),
+    customerPlan: z.string().min(1).optional(),
+    disclaimer: z.string().min(1).optional(),
+    providerDetails: z
+      .object({
+        type: z.literal("REVOLUT_PERSONAL"),
+        plan: revolutPersonalPlanSchema,
+        displayedBaseRate: positiveDecimalStringSchema,
+        fxFee: monetaryAmountSchema,
+        totalFee: monetaryAmountSchema,
+        feeCurrency: currencyCodeSchema,
+        totalSourceCost: monetaryAmountSchema,
+        fxTooltip: z.string().min(1).optional(),
+        planTooltipLong: z.string().min(1).optional(),
+        planTooltipShort: z.string().min(1).optional(),
+        allowanceAssumption: z.literal("FULL_ALLOWANCE_ASSUMED"),
+        indicativeWarning: z.string().min(1),
+      })
+      .strict()
+      .optional(),
+  })
+  .superRefine((quote, context) => {
+    if (quote.sourceAmount.currency !== quote.pair.sourceCurrency) {
+      context.addIssue({
+        code: "custom",
+        message: "Source amount currency must match the quote pair",
+        path: ["sourceAmount", "currency"],
+      });
+    }
+    if (quote.targetAmount.currency !== quote.pair.targetCurrency) {
+      context.addIssue({
+        code: "custom",
+        message: "Target amount currency must match the quote pair",
+        path: ["targetAmount", "currency"],
+      });
+    }
+
+    const totalSourceCost = quote.providerDetails?.totalSourceCost;
+    if (totalSourceCost !== undefined) {
+      const sourceCurrency = quote.sourceAmount.currency;
+      for (const [path, currency] of [
+        [["providerDetails", "fxFee", "currency"], quote.providerDetails?.fxFee.currency],
+        [["providerDetails", "totalFee", "currency"], quote.providerDetails?.totalFee.currency],
+        [["providerDetails", "feeCurrency"], quote.providerDetails?.feeCurrency],
+        [["providerDetails", "totalSourceCost", "currency"], totalSourceCost.currency],
+      ] as const) {
+        if (currency !== sourceCurrency) {
+          context.addIssue({
+            code: "custom",
+            message: "Provider cost currency must match the source currency",
+            path: [...path],
+          });
+        }
+      }
+      if (
+        !decimalPattern.test(totalSourceCost.amount) ||
+        !decimal(totalSourceCost.amount).greaterThan(0)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Total source cost must be positive",
+          path: ["providerDetails", "totalSourceCost", "amount"],
+        });
+      }
+    }
+
+    try {
+      const expected = calculateRankingEffectiveRate({
+        sourceAmount: quote.sourceAmount,
+        targetAmount: quote.targetAmount,
+        ...(totalSourceCost === undefined ? {} : { totalSourceCost }),
+      });
+      if (!decimal(quote.rankingEffectiveRate).equals(expected)) {
+        context.addIssue({
+          code: "custom",
+          message: "Ranking effective rate is inconsistent with normalized quote costs",
+          path: ["rankingEffectiveRate"],
+        });
+      }
+    } catch {
+      context.addIssue({
+        code: "custom",
+        message: "Ranking effective rate could not be calculated safely",
+        path: ["rankingEffectiveRate"],
+      });
+    }
+  });
 
 export const unavailableQuoteSchema = z.object({
   kind: z.literal("unavailable"),

@@ -15,6 +15,7 @@ describe("createMockQuote", () => {
     expect(quote.targetAmount).toEqual({ currency: "HUF", amount: "391323" });
     expect(quote.explicitFee).toEqual({ currency: "EUR", amount: "3.00" });
     expect(quote.effectiveRate).toBe("391.32300000");
+    expect(quote.rankingEffectiveRate).toBe("391.323");
   });
 
   it("does not treat the reverse direction as an exact inverse", () => {
@@ -27,6 +28,7 @@ describe("createMockQuote", () => {
     });
 
     expect(quote.effectiveRate).toBe("0.00248253");
+    expect(quote.rankingEffectiveRate).toBe("0.002482525");
     expect(quote.targetAmount.currency).toBe("EUR");
   });
 

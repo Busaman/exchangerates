@@ -102,6 +102,15 @@ results and ranks only fresh `AVAILABLE` quotes. Expose this through strict `POS
 complete provider failure is a `200` domain response; request validation is `400`, and unexpected
 route failure is a sanitized `500`. Provider errors never expose stack traces or private messages.
 
+Every successful quote has an explicit cost-normalized `rankingEffectiveRate`. Use
+`targetAmount / providerDetails.totalSourceCost` when that cost exists, is positive, and uses the
+source currency; otherwise use `targetAmount / sourceAmount`. All arithmetic and comparison use
+decimal.js. Sort descending, then break exact ties by ascending provider identifier. This treats a
+fee deducted before conversion and a fee charged separately on top consistently. A malformed or
+wrong-currency provider-supplied total cost fails closed as `PROVIDER_INVALID_RESPONSE`; absence of
+the optional provider cost is the only fallback case. Raw rate and provider-specific `effectiveRate`
+retain their existing semantics.
+
 ## ADR-011 — Revolut Hungary personal public JSON integration
 
 **Status:** Accepted with operational caveat (2026-07-13)
@@ -128,7 +137,12 @@ explicitly `STALE` and cannot win comparison.
 Sender amount and currencies must match exactly. The raw rate is checked against actual
 recipient/sender using a configurable 0.5% relative tolerance only to accommodate the endpoint's
 displayed recipient precision; this tolerance does not alter any amount, rate or fee returned to the
-user. Fee and total-source-cost identities remain exact decimal comparisons.
+user. Fee currency checks are exact; source-cost arithmetic uses only the minor-unit tolerance below.
+
+The endpoint serializes monetary display values at currency precision, so accept a difference of at
+most one source-currency minor unit between `fees.cost` and `sender.amount + fees.total`: 1 HUF or
+0.01 EUR, inclusive. Larger differences fail closed. This tolerance validates the response but does
+not change the returned cost used for ranking.
 
 The selected plan's complete endpoint fee object is authoritative for this indicative quote. NeoRate
 requires an exact personal plan match, validates `fees.fx`, `fees.total`, and `fees.cost`, requires a
@@ -146,7 +160,9 @@ The 2026-07-13 no-cookie live probe with `Accept-Language: hu` returned `200 OK`
 reported matching currencies, positive recipient amount, correct rate direction, and a timestamp.
 Every response exposed only `STANDARD`; NeoRate therefore fails closed for the other selected plans
 until the endpoint returns their exact complete plan fee objects. Fixture support is contract coverage,
-not evidence that every plan is currently returned live.
+not evidence that every plan is currently returned live. The multi-plan
+`huf-eur-plan-fees.json` fixture is explicitly marked `_synthetic: true` and must never be cited as
+live evidence.
 
 The endpoint is undocumented and its contract/access requirements may change. Saved JSON fixtures
 contain only sanitized contract evidence and tests never call Revolut. The Hungarian legal page also describes a conditional migration-linked
@@ -155,3 +171,10 @@ modeled and the UI requires final app verification. This adapter is not producti
 on the page as an executable quote. The registration is `UNAVAILABLE` by default and performs no
 outbound request. `REVOLUT_ADAPTER_ENABLED=true` is an explicit staging-only opt-in until live
 server access, JSON-contract reliability and legal/product approval have been demonstrated.
+Only the exact lowercase string `true` enables it. `false`, missing, empty, `yes`, `1`, `TRUE`, and
+all other values safely disable Revolut; an unrecognized non-empty value may emit a server warning
+but cannot throw during registry or route loading or affect other adapters.
+
+`FULL_ALLOWANCE_ASSUMED` is an optimistic best-case constraint, not account-specific evidence. The
+UI keeps such rows visible, labels them as full-allowance-assumed, and qualifies a winning badge as
+“Legjobb indikatív best-case eredmény · teljes keret feltételezve”. App verification remains required.
