@@ -23,7 +23,7 @@ locked in `pnpm-lock.yaml`.
 
 ## Local setup
 
-Requirements: Node.js 20.9 or newer, pnpm 11, and PostgreSQL for persistence work.
+Requirements: Node.js 22.13 or newer, pnpm 11, and PostgreSQL for persistence work.
 
 ```bash
 pnpm install
@@ -39,8 +39,9 @@ the environment template with `Copy-Item .env.example .env`.
 
 `POST /api/v1/quotes` is the versioned server-side comparison boundary. Monetary values are plain
 decimal strings. Requests reject unknown fields, unsupported currencies/providers, duplicate
-providers, equal currencies, malformed/non-positive amounts, and amounts above
-`1000000000000`.
+providers, equal currencies, malformed/non-positive amounts, amount strings longer than 30
+characters, values below the source-currency minimum (0.01 EUR or 100 HUF), and amounts above
+`1000000000000`. Omitting `providers` compares every adapter registered on the server.
 
 ```json
 {
@@ -118,9 +119,10 @@ Provider calls time out after 2 seconds by default. One timeout or exception bec
 ## Decimal and rounding rules
 
 All calculations use decimal.js—never JavaScript `number`. Input is preserved as a decimal string.
-Fees are rounded `ROUND_HALF_UP` to the source currency scale, target amounts to the target currency
-scale (EUR 2, HUF 0), and effective rates to 8 decimal places. The rounded explicit fee is deducted
-before target conversion. See `DECISIONS.md` for the authoritative policy.
+The deterministic mock rounds fees and target amounts with `ROUND_HALF_UP` to their currency scales
+(EUR 2, HUF 0), and effective rates to 8 decimal places. The rounded explicit fee is deducted before
+target conversion. This is not a universal provider policy: future real adapters must implement and
+test the provider's documented rounding direction. See `DECISIONS.md` for the authoritative policy.
 
 ## Environment variables
 

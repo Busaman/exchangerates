@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  availableQuoteSchema,
-  quoteResultSchema,
-  type Provider,
-  type QuoteResult,
-} from "@/domain/quote";
+import { availableQuoteSchema, type Provider, type QuoteResult } from "@/domain/quote";
 import { MockProviderAdapter, createMockQuote } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { ProviderAdapterRegistry, providerRegistry } from "@/providers/provider-registry";
@@ -29,6 +24,18 @@ describe("provider registry", () => {
     ]);
     expect(providerRegistry.get("MOCK_PROVIDER").adapter).toBeInstanceOf(MockProviderAdapter);
   });
+
+  it("rejects duplicate provider registrations", () => {
+    const adapter = new MockProviderAdapter();
+
+    expect(
+      () =>
+        new ProviderAdapterRegistry([
+          { status: "SUPPORTED", adapter },
+          { status: "UNAVAILABLE", adapter },
+        ]),
+    ).toThrow("Provider registry contains duplicate provider identifiers");
+  });
 });
 
 describe("getQuotes", () => {
@@ -50,6 +57,23 @@ describe("getQuotes", () => {
     expect(response.sourceStatus).toBe("PARTIAL_SUCCESS");
     expect(response.warnings).toEqual(["MOCK_DATA"]);
     expect(response.issues[0]?.kind).toBe("unavailable");
+  });
+
+  it("uses every registered provider when provider selection is omitted", async () => {
+    const response = await getQuotes(
+      {
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        customerPlan: null,
+      },
+      deterministicDependencies,
+    );
+
+    expect(response.request.providers).toEqual(["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"]);
+    expect(response.quotes).toHaveLength(1);
+    expect(response.issues).toHaveLength(1);
+    expect(response.sourceStatus).toBe("PARTIAL_SUCCESS");
   });
 
   it("returns a deterministic HUF/EUR quote", async () => {
@@ -184,12 +208,14 @@ describe("getQuotes", () => {
 
   it("classifies a schema-invalid adapter response without exposing it", async () => {
     const provider: Provider = { id: "MOCK_PROVIDER", name: "Invalid provider" };
+    const malformedResult = {
+      kind: "quote",
+      privatePayload: "must not leak",
+    } as unknown as QuoteResult;
     const registry = new ProviderAdapterRegistry([
       {
         status: "SUPPORTED",
-        adapter: customAdapter(provider, async () =>
-          Promise.resolve(quoteResultSchema.parse({ kind: "quote" })),
-        ),
+        adapter: customAdapter(provider, async () => Promise.resolve(malformedResult)),
       },
     ]);
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -204,6 +230,49 @@ describe("getQuotes", () => {
       { ...deterministicDependencies, registry },
     );
 
+    expect(response.issues[0]).toMatchObject({
+      kind: "error",
+      errorCode: "PROVIDER_INVALID_RESPONSE",
+    });
+    expect(JSON.stringify(response)).not.toContain("must not leak");
+    consoleError.mockRestore();
+  });
+
+  it("rejects a zero-payout adapter response instead of ranking it", async () => {
+    const provider: Provider = { id: "MOCK_PROVIDER", name: "Zero payout provider" };
+    const zeroPayoutResult = {
+      ...createMockQuote({
+        providerId: "MOCK_PROVIDER",
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        requestedAt: generatedAt,
+      }),
+      provider,
+      targetAmount: { currency: "HUF", amount: "0" },
+      effectiveRate: "0.00000000",
+    } as unknown as QuoteResult;
+    const registry = new ProviderAdapterRegistry([
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(provider, async () => Promise.resolve(zeroPayoutResult)),
+      },
+    ]);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await getQuotes(
+      {
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        providers: ["MOCK_PROVIDER"],
+      },
+      { ...deterministicDependencies, registry },
+    );
+
+    expect(response.quotes).toEqual([]);
+    expect(response.bestProviderId).toBeNull();
+    expect(response.sourceStatus).toBe("NO_AVAILABLE_QUOTES");
     expect(response.issues[0]).toMatchObject({
       kind: "error",
       errorCode: "PROVIDER_INVALID_RESPONSE",

@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 
 export const decimalPattern = /^(0|[1-9]\d*)(\.\d+)?$/;
 export const maximumSourceAmount = "1000000000000";
+export const maximumSourceAmountLength = 30;
 
 const ExactDecimal = Decimal.clone({
   precision: 40,
@@ -13,6 +14,11 @@ const ExactDecimal = Decimal.clone({
 export const currencyFractionDigits = {
   EUR: 2,
   HUF: 0,
+} as const;
+
+export const minimumSourceAmount = {
+  EUR: "0.01",
+  HUF: "100",
 } as const;
 
 export type SupportedCurrency = keyof typeof currencyFractionDigits;
@@ -36,7 +42,12 @@ export function compareDecimalStrings(left: string, right: string): number {
 }
 
 export function isAllowedSourceAmount(value: string): boolean {
-  if (!decimalPattern.test(value)) return false;
+  if (value.length > maximumSourceAmountLength || !decimalPattern.test(value)) return false;
   const amount = decimal(value);
   return amount.isPositive() && amount.lessThanOrEqualTo(maximumSourceAmount);
+}
+
+export function meetsMinimumSourceAmount(value: string, currency: SupportedCurrency): boolean {
+  if (value.length > maximumSourceAmountLength || !decimalPattern.test(value)) return false;
+  return decimal(value).greaterThanOrEqualTo(minimumSourceAmount[currency]);
 }

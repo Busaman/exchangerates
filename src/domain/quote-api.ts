@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { isAllowedSourceAmount, maximumSourceAmount } from "@/domain/decimal";
+import {
+  isAllowedSourceAmount,
+  maximumSourceAmount,
+  maximumSourceAmountLength,
+  meetsMinimumSourceAmount,
+  minimumSourceAmount,
+} from "@/domain/decimal";
 import {
   availableQuoteSchema,
   providerErrorResultSchema,
@@ -13,10 +19,14 @@ export const quoteApiRequestSchema = z
   .object({
     sourceCurrency: supportedCurrencyCodeSchema,
     targetCurrency: supportedCurrencyCodeSchema,
-    sourceAmount: positiveDecimalStringSchema.refine(
-      isAllowedSourceAmount,
-      `Source amount must not exceed ${maximumSourceAmount}`,
-    ),
+    sourceAmount: z
+      .string()
+      .max(
+        maximumSourceAmountLength,
+        `Source amount must not exceed ${maximumSourceAmountLength} characters`,
+      )
+      .pipe(positiveDecimalStringSchema)
+      .refine(isAllowedSourceAmount, `Source amount must not exceed ${maximumSourceAmount}`),
     providers: z.array(providerIdentifierSchema).min(1).max(20).optional(),
     customerPlan: z.string().trim().min(1).max(100).nullable().optional(),
   })
@@ -27,6 +37,14 @@ export const quoteApiRequestSchema = z
         code: "custom",
         message: "Source and target currency must differ",
         path: ["targetCurrency"],
+      });
+    }
+
+    if (!meetsMinimumSourceAmount(request.sourceAmount, request.sourceCurrency)) {
+      context.addIssue({
+        code: "custom",
+        message: `Source amount must be at least ${minimumSourceAmount[request.sourceCurrency]} ${request.sourceCurrency}`,
+        path: ["sourceAmount"],
       });
     }
 

@@ -7,7 +7,8 @@
 Use Next.js 16.2.10 App Router, React 19.2.4, TypeScript 5.9.3 and Tailwind CSS 4.3.2. These are the
 mutually resolved stable foundation versions and include the relevant React Server Component
 security fixes. Prefer Server Components and shadcn/ui-compatible tokens/composition; add shadcn
-primitives only when a concrete UI needs them.
+primitives only when a concrete UI needs them. Require Node.js 22.13 or newer because the selected
+pnpm 11.7.0 runtime depends on Node APIs unavailable in Node 20.
 
 ## ADR-002 — Package manager
 
@@ -69,11 +70,21 @@ so one integration cannot erase valid quotes from other providers.
 
 **Status:** Accepted (2026-07-13)
 
-Use decimal.js 10.6.0 with a cloned 40-digit precision context and `ROUND_HALF_UP`. Never convert
-money or rates to JavaScript `number` for calculation. Preserve the source amount string; calculate
-the fee exactly and round it to the source currency scale, subtract that rounded fee, convert at the
-direction-specific rate, and round the result to the target currency scale. EUR uses 2 fraction
-digits, HUF uses 0, and effective rates use 8. API and domain values remain plain decimal strings.
+Use decimal.js 10.6.0 with a cloned 40-digit precision context. Never convert money or rates to
+JavaScript `number` for calculation. The deterministic mock uses `ROUND_HALF_UP`: preserve the
+source amount string, calculate the fee exactly and round it to the source currency scale, subtract
+that rounded fee, convert at the direction-specific rate, and round the result to the target
+currency scale. EUR uses 2 fraction digits, HUF uses 0, and effective rates use 8. API and domain
+values remain plain decimal strings.
+
+This rounding mode is a mock-fixture policy, not a universal customer-payout rule. Every real
+provider adapter must reproduce and test the provider's documented fee, rate and payout rounding
+direction. Until verified, an adapter must return unavailable rather than apply the mock policy.
+
+The public quote API limits source amounts to 30 characters and applies product minimums of 0.01 EUR
+and 100 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
+payout as the best available quote. Normalized `AVAILABLE` quotes independently require positive
+source amounts, target amounts and effective rates as defense in depth.
 
 ## ADR-010 — Registry-driven versioned quote API
 
