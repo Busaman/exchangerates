@@ -1,23 +1,34 @@
 import { z } from "zod";
+import { decimalPattern } from "@/domain/decimal";
 
-const decimalStringSchema = z
-  .string()
-  .regex(/^(0|[1-9]\d*)(\.\d+)?$/, "Expected a non-negative decimal string");
-
-export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/);
+export const providerIdentifierSchema = z.enum(["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"]);
 export const supportedCurrencyCodeSchema = z.enum(["EUR", "HUF"]);
+export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/);
+export const decimalStringSchema = z
+  .string()
+  .regex(decimalPattern, "Expected a non-negative plain decimal string");
+export const positiveDecimalStringSchema = decimalStringSchema.refine(
+  (value) => value !== "0" && !/^0\.0*$/.test(value),
+  "Amount must be greater than zero",
+);
+
 export const quoteSourceTypeSchema = z.enum([
   "LIVE_OFFICIAL",
   "LIVE_UNOFFICIAL",
   "ESTIMATED",
   "MOCK",
 ]);
-export const quoteDataStatusSchema = z.enum(["AVAILABLE", "UNAVAILABLE", "STALE"]);
+export const quoteDataStatusSchema = z.enum(["AVAILABLE", "UNAVAILABLE", "STALE", "FAILED"]);
 export const freshnessSchema = z.enum(["FRESH", "AGING", "STALE", "UNKNOWN"]);
 export const reliabilitySchema = z.enum(["VERIFIED", "HIGH", "MEDIUM", "LOW", "NOT_APPLICABLE"]);
+export const providerErrorCodeSchema = z.enum([
+  "PROVIDER_TIMEOUT",
+  "PROVIDER_EXCEPTION",
+  "PROVIDER_INVALID_RESPONSE",
+]);
 
 export const providerSchema = z.object({
-  id: z.string().regex(/^[a-z0-9-]+$/),
+  id: providerIdentifierSchema,
   name: z.string().min(1),
 });
 
@@ -35,14 +46,18 @@ export const monetaryAmountSchema = z.object({
   amount: decimalStringSchema,
 });
 
-export const quoteRequestSchema = currencyPairSchema.extend({
-  providerId: providerSchema.shape.id,
-  sourceAmount: decimalStringSchema.refine((value) => Number(value) > 0, {
-    message: "Source amount must be greater than zero",
-  }),
-  customerPlan: z.string().min(1).optional(),
-  requestedAt: z.iso.datetime(),
-});
+export const quoteRequestSchema = z
+  .object({
+    sourceCurrency: supportedCurrencyCodeSchema,
+    targetCurrency: supportedCurrencyCodeSchema,
+    providerId: providerIdentifierSchema,
+    sourceAmount: positiveDecimalStringSchema,
+    customerPlan: z.string().min(1).optional(),
+    requestedAt: z.iso.datetime(),
+  })
+  .refine((request) => request.sourceCurrency !== request.targetCurrency, {
+    message: "Source and target currency must differ",
+  });
 
 export const availableQuoteSchema = z.object({
   kind: z.literal("quote"),
@@ -78,15 +93,31 @@ export const unavailableQuoteSchema = z.object({
   sourceId: z.string().min(1).optional(),
 });
 
+export const providerErrorResultSchema = z.object({
+  kind: z.literal("error"),
+  provider: providerSchema,
+  pair: currencyPairSchema,
+  status: z.literal("FAILED"),
+  freshness: z.literal("UNKNOWN"),
+  reliability: z.literal("NOT_APPLICABLE"),
+  retrievedAt: z.iso.datetime(),
+  errorCode: providerErrorCodeSchema,
+  reason: z.string().min(1),
+});
+
 export const quoteResultSchema = z.discriminatedUnion("kind", [
   availableQuoteSchema,
   unavailableQuoteSchema,
+  providerErrorResultSchema,
 ]);
 
+export type ProviderIdentifier = z.infer<typeof providerIdentifierSchema>;
 export type CurrencyCode = z.infer<typeof currencyCodeSchema>;
 export type SupportedCurrencyCode = z.infer<typeof supportedCurrencyCodeSchema>;
 export type Provider = z.infer<typeof providerSchema>;
 export type QuoteRequest = z.infer<typeof quoteRequestSchema>;
 export type AvailableQuote = z.infer<typeof availableQuoteSchema>;
 export type UnavailableQuote = z.infer<typeof unavailableQuoteSchema>;
+export type ProviderErrorResult = z.infer<typeof providerErrorResultSchema>;
+export type ProviderErrorCode = z.infer<typeof providerErrorCodeSchema>;
 export type QuoteResult = z.infer<typeof quoteResultSchema>;

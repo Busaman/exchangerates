@@ -64,3 +64,23 @@ Compare normalized decimal strings without conversion to JavaScript `number`. Ex
 failures return unavailable results directly; the comparison service also isolates unexpected
 adapter exceptions, logs them, and returns a numeric-field-free unavailable result for that provider
 so one integration cannot erase valid quotes from other providers.
+
+## ADR-009 — decimal.js and rounding policy
+
+**Status:** Accepted (2026-07-13)
+
+Use decimal.js 10.6.0 with a cloned 40-digit precision context and `ROUND_HALF_UP`. Never convert
+money or rates to JavaScript `number` for calculation. Preserve the source amount string; calculate
+the fee exactly and round it to the source currency scale, subtract that rounded fee, convert at the
+direction-specific rate, and round the result to the target currency scale. EUR uses 2 fraction
+digits, HUF uses 0, and effective rates use 8. API and domain values remain plain decimal strings.
+
+## ADR-010 — Registry-driven versioned quote API
+
+**Status:** Accepted (2026-07-13)
+
+Compose provider adapters only in `ProviderAdapterRegistry`. The quote service selects registry
+entries, applies a 2-second default provider timeout with `AbortSignal`, validates results and ranks
+only fresh `AVAILABLE` quotes. Expose this through strict `POST /api/v1/quotes`. Valid partial or
+complete provider failure is a `200` domain response; request validation is `400`, and unexpected
+route failure is a sanitized `500`. Provider errors never expose stack traces or private messages.

@@ -1,19 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  quoteApiErrorResponseSchema,
+  quoteApiResponseSchema,
+  type QuoteApiRequest,
+  type QuoteApiResponse,
+} from "@/domain/quote-api";
 import {
   supportedCurrencyCodeSchema,
   type QuoteResult,
   type SupportedCurrencyCode,
 } from "@/domain/quote";
-import { normalizeDemoAmount } from "@/components/comparison-input";
-import { createMockQuote, mockProvider } from "@/providers/mock-provider";
-import { createUnavailableQuote, unavailableProvider } from "@/providers/unavailable-provider";
 
-const currencyNames: Readonly<Record<string, string>> = {
+const currencyNames = {
   EUR: "EUR · euró",
   HUF: "HUF · forint",
+} as const;
+
+const initialRequest: QuoteApiRequest = {
+  sourceCurrency: "EUR",
+  targetCurrency: "HUF",
+  sourceAmount: "1000",
+  providers: ["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"],
+  customerPlan: null,
 };
+
+type ViewState =
+  | { status: "loading" }
+  | { status: "success"; data: QuoteApiResponse }
+  | { status: "error"; message: string };
 
 function formatMoney(amount: string, currency: string): string {
   return new Intl.NumberFormat("hu-HU", {
@@ -25,47 +41,78 @@ function formatMoney(amount: string, currency: string): string {
 
 function labelForStatus(result: QuoteResult): string {
   if (result.kind === "unavailable") return "Nem elérhető";
+  if (result.kind === "error")
+    return result.errorCode === "PROVIDER_TIMEOUT" ? "Időtúllépés" : "Hiba";
   if (result.status === "STALE") return "Elavult";
   return result.sourceType === "MOCK" ? "Mock adat" : result.status;
 }
 
-export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
+async function fetchQuotes(
+  request: QuoteApiRequest,
+  signal?: AbortSignal,
+): Promise<QuoteApiResponse> {
+  const response = await fetch("/api/v1/quotes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal,
+  });
+  const payload: unknown = await response.json();
+
+  if (!response.ok) {
+    const parsedError = quoteApiErrorResponseSchema.safeParse(payload);
+    throw new Error(
+      parsedError.success ? parsedError.data.error.message : "A kérés sikertelen volt.",
+    );
+  }
+
+  return quoteApiResponseSchema.parse(payload);
+}
+
+export function ComparisonTool() {
   const [sourceCurrency, setSourceCurrency] = useState<SupportedCurrencyCode>("EUR");
   const [targetCurrency, setTargetCurrency] = useState<SupportedCurrencyCode>("HUF");
   const [amount, setAmount] = useState("1000");
-  const comparison = useMemo<{ results: QuoteResult[]; message: string }>(() => {
-    const normalizedAmount = normalizeDemoAmount(amount);
-    if (normalizedAmount === null) {
-      return {
-        results: [],
-        message: "Adj meg 0,01 és 1 000 000 000 000 közötti összeget, legfeljebb két tizedessel.",
-      };
-    }
+  const [view, setView] = useState<ViewState>({ status: "loading" });
 
-    const baseRequest = {
-      sourceCurrency,
-      targetCurrency,
-      sourceAmount: normalizedAmount,
-      requestedAt: generatedAt,
-    };
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchQuotes(initialRequest, controller.signal).then(
+      (data) => setView({ status: "success", data }),
+      (error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setView({
+          status: "error",
+          message: error instanceof Error ? error.message : "A kérés sikertelen volt.",
+        });
+      },
+    );
+    return () => controller.abort();
+  }, []);
+
+  async function submitComparison(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setView({ status: "loading" });
 
     try {
-      return {
-        results: [
-          createMockQuote({ ...baseRequest, providerId: mockProvider.id }),
-          createUnavailableQuote({ ...baseRequest, providerId: unavailableProvider.id }),
-        ],
-        message: "",
-      };
-    } catch {
-      return {
-        results: [],
-        message: "A mock összehasonlítás ehhez az összeghez nem készíthető el.",
-      };
+      const data = await fetchQuotes({
+        sourceCurrency,
+        targetCurrency,
+        sourceAmount: amount.trim().replace(",", "."),
+        providers: ["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"],
+        customerPlan: null,
+      });
+      setView({ status: "success", data });
+    } catch (error) {
+      setView({
+        status: "error",
+        message: error instanceof Error ? error.message : "A kérés sikertelen volt.",
+      });
     }
-  }, [amount, generatedAt, sourceCurrency, targetCurrency]);
+  }
 
-  const results = comparison.results;
+  const data = view.status === "success" ? view.data : undefined;
+  const results: QuoteResult[] = data === undefined ? [] : [...data.quotes, ...data.issues];
 
   function swapCurrencies() {
     setSourceCurrency(targetCurrency);
@@ -77,7 +124,7 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
       aria-labelledby="comparison-title"
       className="overflow-hidden rounded-2xl border border-white/10 bg-[#0d1b2d]/90 shadow-2xl shadow-black/20"
     >
-      <div className="border-b border-white/10 p-5 sm:p-7">
+      <form onSubmit={submitComparison} className="border-b border-white/10 p-5 sm:p-7">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="comparison-title" className="text-xl font-semibold">
@@ -92,7 +139,7 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
           </span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_1.2fr] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_1.2fr_auto] md:items-end">
           <label className="grid gap-2 text-sm font-medium text-slate-300">
             Ebből
             <select
@@ -150,11 +197,27 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
               <span className="pr-3 font-mono text-sm text-slate-400">{sourceCurrency}</span>
             </div>
           </label>
+          <button
+            type="submit"
+            disabled={view.status === "loading"}
+            className="h-12 rounded-lg bg-emerald-400 px-5 font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-wait disabled:opacity-60"
+          >
+            {view.status === "loading" ? "Betöltés…" : "Összehasonlítás"}
+          </button>
         </div>
-        <p id="amount-help" className="mt-2 min-h-5 text-sm text-rose-300" role="status">
-          {comparison.message}
+        <p
+          id="amount-help"
+          className="mt-3 min-h-5 text-sm text-rose-300"
+          role="status"
+          aria-live="polite"
+        >
+          {view.status === "error" ? view.message : ""}
+          {data?.sourceStatus === "PARTIAL_SUCCESS"
+            ? "Egy vagy több szolgáltató nem adott elérhető ajánlatot."
+            : ""}
+          {data?.sourceStatus === "NO_AVAILABLE_QUOTES" ? "Nincs elérhető számszerű ajánlat." : ""}
         </p>
-      </div>
+      </form>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left">
@@ -169,16 +232,16 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10">
-            {results.map((result, index) => (
+            {results.map((result) => (
               <tr
                 key={result.provider.id}
                 className={
-                  index === 0 && result.kind === "quote" ? "bg-emerald-300/[0.035]" : undefined
+                  data?.bestProviderId === result.provider.id ? "bg-emerald-300/[0.035]" : undefined
                 }
               >
                 <td className="px-5 py-5 sm:px-7">
                   <div className="font-semibold text-white">{result.provider.name}</div>
-                  {index === 0 && result.kind === "quote" && (
+                  {data?.bestProviderId === result.provider.id && (
                     <span className="mt-1 inline-block text-xs font-medium text-emerald-300">
                       Legjobb elérhető mock eredmény
                     </span>
@@ -190,7 +253,8 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
                       {formatMoney(result.targetAmount.amount, result.targetAmount.currency)}
                     </td>
                     <td className="px-4 py-5 font-mono text-sm text-slate-300">
-                      1 {sourceCurrency} = {result.effectiveRate} {targetCurrency}
+                      1 {result.pair.sourceCurrency} = {result.effectiveRate}{" "}
+                      {result.pair.targetCurrency}
                     </td>
                     <td className="px-4 py-5 text-sm text-slate-300">
                       {formatMoney(result.explicitFee.amount, result.explicitFee.currency)}
@@ -198,7 +262,7 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
                   </>
                 ) : (
                   <td colSpan={3} className="px-4 py-5 text-sm text-slate-500">
-                    Nincs megjeleníthető számszerű ajánlat.
+                    {result.reason} Nincs megjeleníthető számszerű ajánlat.
                   </td>
                 )}
                 <td className="px-4 py-5">
@@ -222,9 +286,17 @@ export function ComparisonTool({ generatedAt }: { generatedAt: string }) {
       </div>
 
       <div className="border-t border-amber-300/15 bg-amber-300/[0.045] px-5 py-4 text-sm leading-6 text-amber-100/80 sm:px-7">
-        <strong className="text-amber-100">Figyelem:</strong> a fenti Demo Fintech adatsor
-        determinisztikus mock. A Wise sor szándékosan nem elérhető, és nem kap helyettesítő piaci
-        középárfolyamot.
+        {data?.warnings.includes("MOCK_DATA") ? (
+          <>
+            <strong className="text-amber-100">Figyelem:</strong> a megjelenített ajánlat
+            determinisztikus mock adat, nem élő vagy végrehajtható árfolyam.{" "}
+          </>
+        ) : null}
+        {view.status === "loading" ? "A quote API válaszára várunk." : null}
+        {view.status === "error" ? "A legutóbbi quote API kérés sikertelen volt." : null}
+        {data !== undefined
+          ? `Utolsó frissítés: ${new Intl.DateTimeFormat("hu-HU", { dateStyle: "short", timeStyle: "medium", timeZone: "Europe/Budapest" }).format(new Date(data.generatedAt))}`
+          : null}
       </div>
     </section>
   );

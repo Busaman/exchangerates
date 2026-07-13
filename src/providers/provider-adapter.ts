@@ -6,5 +6,7 @@ import type { Provider, QuoteRequest, QuoteResult } from "@/domain/quote";
  */
 export interface ProviderAdapter {
   readonly provider: Provider;
-  getQuote(request: QuoteRequest): Promise<QuoteResult>;
+  getQuote(request: QuoteRequest, context?: ProviderAdapterContext): Promise<QuoteResult>;
 }
+
+export type ProviderAdapterContext = Readonly<{ signal: AbortSignal }>;

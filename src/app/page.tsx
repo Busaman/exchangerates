@@ -1,7 +1,5 @@
 import { ComparisonTool } from "@/components/comparison-tool";
 
-export const dynamic = "force-dynamic";
-
 export default function HomePage() {
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
@@ -33,7 +31,7 @@ export default function HomePage() {
         </p>
       </section>
 
-      <ComparisonTool generatedAt={new Date().toISOString()} />
+      <ComparisonTool />
 
       <footer className="mt-10 border-t border-white/10 py-6 text-sm text-slate-500">
         NeoRate foundation · A piaci középárfolyam soha nem helyettesíti csendben a szolgáltató

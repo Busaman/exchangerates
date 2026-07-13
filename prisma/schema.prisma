@@ -18,6 +18,7 @@ enum DataStatus {
   AVAILABLE
   UNAVAILABLE
   STALE
+  FAILED
 }
 
 enum Freshness {

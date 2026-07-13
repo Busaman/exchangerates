@@ -4,7 +4,7 @@ import { createUnavailableQuote } from "@/providers/unavailable-provider";
 describe("createUnavailableQuote", () => {
   it("returns no numeric fields when provider data is unavailable", () => {
     const result = createUnavailableQuote({
-      providerId: "wise",
+      providerId: "UNAVAILABLE_PROVIDER",
       sourceCurrency: "EUR",
       targetCurrency: "HUF",
       sourceAmount: "1000",

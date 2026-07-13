@@ -5,29 +5,41 @@ import {
   type Provider,
   type QuoteRequest,
 } from "@/domain/quote";
-import { formatMockDecimal } from "@/domain/decimal";
+import { currencyFractionDigits, decimal, roundDecimal } from "@/domain/decimal";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 
-export const mockProvider: Provider = { id: "mock-fintech", name: "Demo Fintech" };
+export const mockProvider: Provider = { id: "MOCK_PROVIDER", name: "Demo Fintech" };
 
-const rates: Readonly<Record<string, number>> = {
-  "EUR-HUF": 392.5,
-  "HUF-EUR": 0.00249,
-};
+const rates = {
+  "EUR-HUF": "392.5",
+  "HUF-EUR": "0.00249",
+} as const;
+const feeRate = "0.003";
+const effectiveRateFractionDigits = 8;
 
 export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
   const request = quoteRequestSchema.parse(requestInput);
-  const pairKey = `${request.sourceCurrency}-${request.targetCurrency}`;
+  const pairKey = `${request.sourceCurrency}-${request.targetCurrency}` as keyof typeof rates;
   const rate = rates[pairKey];
 
   if (rate === undefined) {
     throw new Error(`Mock provider does not support ${pairKey}`);
   }
 
-  const sourceAmount = Number(request.sourceAmount);
-  const fee = sourceAmount * 0.003;
-  const targetAmount = (sourceAmount - fee) * rate;
+  const sourceAmount = decimal(request.sourceAmount);
+  const fee = roundDecimal(
+    sourceAmount.times(feeRate),
+    currencyFractionDigits[request.sourceCurrency],
+  );
+  const targetAmount = roundDecimal(
+    sourceAmount.minus(fee).times(rate),
+    currencyFractionDigits[request.targetCurrency],
+  );
+  const effectiveRate = roundDecimal(
+    decimal(targetAmount).dividedBy(sourceAmount),
+    effectiveRateFractionDigits,
+  );
 
   return availableQuoteSchema.parse({
     kind: "quote",
@@ -37,27 +49,18 @@ export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
       targetCurrency: request.targetCurrency,
     },
     direction: "SELL_SOURCE_BUY_TARGET",
-    sourceAmount: {
-      currency: request.sourceCurrency,
-      amount: formatMockDecimal(sourceAmount, 2),
-    },
-    targetAmount: {
-      currency: request.targetCurrency,
-      amount: formatMockDecimal(targetAmount, request.targetCurrency === "HUF" ? 0 : 2),
-    },
-    effectiveRate: formatMockDecimal(targetAmount / sourceAmount, 8),
-    explicitFee: {
-      currency: request.sourceCurrency,
-      amount: formatMockDecimal(fee, 2),
-    },
-    totalCost: { currency: request.sourceCurrency, amount: formatMockDecimal(fee, 2) },
+    sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
+    targetAmount: { currency: request.targetCurrency, amount: targetAmount },
+    effectiveRate,
+    explicitFee: { currency: request.sourceCurrency, amount: fee },
+    totalCost: { currency: request.sourceCurrency, amount: fee },
     rateTimestamp: request.requestedAt,
     retrievedAt: request.requestedAt,
     sourceType: "MOCK",
     status: "AVAILABLE",
     freshness: "FRESH",
     reliability: "LOW",
-    sourceId: "deterministic-foundation-v1",
+    sourceId: "deterministic-foundation-v2",
     customerPlan: request.customerPlan,
     disclaimer: "Deterministic development fixture; this is not a live or executable rate.",
   });
@@ -74,7 +77,7 @@ export class MockProviderAdapter implements ProviderAdapter {
         provider: this.provider,
         request,
         reason: `The deterministic mock does not support ${request.sourceCurrency}/${request.targetCurrency}.`,
-        sourceId: "deterministic-foundation-v1-unavailable",
+        sourceId: "deterministic-foundation-v2-unavailable",
       });
     }
   }

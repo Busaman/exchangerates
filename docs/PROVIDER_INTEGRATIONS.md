@@ -9,7 +9,8 @@ No scraping, private API reverse engineering or endpoint guessing belongs in an 
 
 ## Implementation checklist
 
-1. Create one module under `src/providers/<provider>` implementing `ProviderAdapter`.
+1. Add the provider identifier to `providerIdentifierSchema` and create one module under
+   `src/providers/<provider>` implementing `ProviderAdapter`.
 2. Define a Zod schema for the raw response and validate before reading values.
 3. Map source amount, resulting amount, effective rate, explicit fee and total cost without binary
    floating-point arithmetic. Preserve directional pricing and plan/tier.
@@ -18,6 +19,13 @@ No scraping, private API reverse engineering or endpoint guessing belongs in an 
 6. Return `unavailable` without numeric fields for unsupported pairs, failed validation, provider
    downtime or missing reliable data. Do not substitute a market rate.
 7. Log structured operational context without credentials, account details or sensitive raw payloads.
+8. Add a `ProviderRegistration` to `providerRegistry` with status `SUPPORTED` or `UNAVAILABLE`.
+   Do not add provider-specific conditionals to the quote service or API route.
+
+Adapters receive an `AbortSignal` in their context and should stop network work promptly when it is
+aborted. They return normalized `quote` or `unavailable` results. Thrown exceptions, timeouts and
+schema-invalid adapter responses are converted by the service to numeric-field-free `error/FAILED`
+results with public error codes; private exception details remain in structured logs only.
 
 ## Tests required before enablement
 
@@ -27,5 +35,7 @@ No scraping, private API reverse engineering or endpoint guessing belongs in an 
 - Timeout, rate-limit, authentication, unavailable and stale behavior.
 - Timestamp/freshness and provenance assertions.
 - Comparison-service integration proving unavailable quotes cannot win or expose numbers.
+- The reusable `runProviderAdapterContract` suite, proving normalized shape, decimal strings,
+  timestamps, provenance and numeric-field-free non-quote results.
 
 Keep a new adapter disabled until its source, tests and user-facing labeling have been reviewed.

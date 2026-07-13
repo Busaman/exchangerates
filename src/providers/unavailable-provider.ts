@@ -7,7 +7,10 @@ import {
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 
-export const unavailableProvider: Provider = { id: "wise", name: "Wise" };
+export const unavailableProvider: Provider = {
+  id: "UNAVAILABLE_PROVIDER",
+  name: "Unavailable example",
+};
 
 export function createUnavailableQuote(requestInput: QuoteRequest): UnavailableQuote {
   const request = quoteRequestSchema.parse(requestInput);

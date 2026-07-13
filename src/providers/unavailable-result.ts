@@ -1,5 +1,8 @@
 import {
+  providerErrorResultSchema,
   unavailableQuoteSchema,
+  type ProviderErrorResult,
+  type ProviderErrorCode,
   type Provider,
   type QuoteRequest,
   type UnavailableQuote,
@@ -29,5 +32,32 @@ export function createProviderUnavailableResult({
     retrievedAt: request.requestedAt,
     reason,
     sourceId,
+  });
+}
+
+export function createProviderErrorResult({
+  provider,
+  request,
+  errorCode,
+  reason,
+}: {
+  provider: Provider;
+  request: QuoteRequest;
+  errorCode: ProviderErrorCode;
+  reason: string;
+}): ProviderErrorResult {
+  return providerErrorResultSchema.parse({
+    kind: "error",
+    provider,
+    pair: {
+      sourceCurrency: request.sourceCurrency,
+      targetCurrency: request.targetCurrency,
+    },
+    status: "FAILED",
+    freshness: "UNKNOWN",
+    reliability: "NOT_APPLICABLE",
+    retrievedAt: request.requestedAt,
+    errorCode,
+    reason,
   });
 }

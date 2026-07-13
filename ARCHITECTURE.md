@@ -41,12 +41,21 @@ result. Ingestion flow: schedule or request → adapter → raw validation → n
 classification → persistence → cache → comparison response. Adapter failures become explicit
 unavailable observations; they do not trigger a mid-rate fallback.
 
+`ProviderAdapterRegistry` is the only runtime composition point. It exposes registration metadata,
+adapter lookup and all configured adapters. Registrations distinguish `SUPPORTED` from deliberately
+`UNAVAILABLE`; runtime timeout, exception and invalid-response failures become `FAILED` results.
+Adding a provider requires its identifier/schema entry, one isolated adapter, contract tests and one
+registry registration—quote orchestration and ranking contain no provider-specific branches.
+
 ## Normalization and comparison
 
 Quotes keep source/target currency, source and resulting amounts, effective rate, explicit fee,
 total cost, provider plan, rate and retrieval timestamps, source identifiers, data status, freshness
 and reliability. Directions are independent; EUR/HUF and HUF/EUR are never inferred from each other.
-Real financial arithmetic must use decimal arithmetic, not JavaScript `number`.
+Real financial arithmetic uses decimal.js with 40-digit precision and `ROUND_HALF_UP`, never
+JavaScript `number`. Source values remain decimal strings. Fees round to source-currency scale,
+target values to target-currency scale, and effective rates to 8 decimal places. The currently
+supported currency scales are EUR 2 and HUF 0.
 In the foundation mock, `totalCost` equals the explicit fee because no verified reference spread is
 available. Future spread-derived cost must be stored as a separately named component before it can
 be included in `totalCost`, with the cost currency and methodology documented.
@@ -73,6 +82,29 @@ include provenance/status timestamps. `LIVE_OFFICIAL` means documented provider-
 `LIVE_UNOFFICIAL` requires explicit approval and labeling; `ESTIMATED` must disclose its method;
 `MOCK` is development/test only. `UNAVAILABLE` has no numeric values. `STALE` retains the original
 source type plus a stale status.
+
+`POST /api/v1/quotes` validates a strict request, resolves selected adapters through the registry,
+calls them in parallel with per-provider abort/timeout support, validates normalized results, ranks
+only fresh `AVAILABLE` quotes, and validates the response before returning it. A valid request always
+gets a `200` domain response even when all providers are unavailable/failed; malformed requests get
+structured `400` errors and unexpected route failures get sanitized `500` errors.
+
+```mermaid
+sequenceDiagram
+  participant UI as Comparison UI
+  participant API as POST /api/v1/quotes
+  participant S as Quote service
+  participant R as Adapter registry
+  participant A as Provider adapters
+  UI->>API: Strict decimal-string request
+  API->>S: Validated request
+  S->>R: Resolve selected provider IDs
+  S->>A: Parallel calls with timeout/AbortSignal
+  A-->>S: quote | unavailable | exception
+  S->>S: Validate, separate issues, rank fresh quotes
+  S-->>API: Validated response contract
+  API-->>UI: 200 result or structured 400/500 error
+```
 
 ## Errors, observability and security
 

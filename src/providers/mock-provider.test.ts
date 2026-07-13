@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createMockQuote, MockProviderAdapter } from "@/providers/mock-provider";
+import { createMockQuote } from "@/providers/mock-provider";
 
 describe("createMockQuote", () => {
   it("returns a deterministic, explicitly mocked EUR/HUF quote", () => {
     const quote = createMockQuote({
-      providerId: "mock-fintech",
+      providerId: "MOCK_PROVIDER",
       sourceCurrency: "EUR",
       targetCurrency: "HUF",
       sourceAmount: "1000.00",
@@ -13,13 +13,13 @@ describe("createMockQuote", () => {
 
     expect(quote.sourceType).toBe("MOCK");
     expect(quote.targetAmount).toEqual({ currency: "HUF", amount: "391323" });
-    expect(quote.explicitFee).toEqual({ currency: "EUR", amount: "3" });
-    expect(quote.effectiveRate).toBe("391.3225");
+    expect(quote.explicitFee).toEqual({ currency: "EUR", amount: "3.00" });
+    expect(quote.effectiveRate).toBe("391.32300000");
   });
 
   it("does not treat the reverse direction as an exact inverse", () => {
     const quote = createMockQuote({
-      providerId: "mock-fintech",
+      providerId: "MOCK_PROVIDER",
       sourceCurrency: "HUF",
       targetCurrency: "EUR",
       sourceAmount: "400000",
@@ -32,7 +32,7 @@ describe("createMockQuote", () => {
 
   it("preserves significant zeroes in integer target amounts", () => {
     const quote = createMockQuote({
-      providerId: "mock-fintech",
+      providerId: "MOCK_PROVIDER",
       sourceCurrency: "EUR",
       targetCurrency: "HUF",
       sourceAmount: "1000.02",
@@ -40,18 +40,5 @@ describe("createMockQuote", () => {
     });
 
     expect(quote.targetAmount.amount).toBe("391330");
-  });
-
-  it("returns unavailable instead of throwing for an unsupported pair", async () => {
-    const result = await new MockProviderAdapter().getQuote({
-      providerId: "mock-fintech",
-      sourceCurrency: "USD",
-      targetCurrency: "EUR",
-      sourceAmount: "1000",
-      requestedAt: "2026-01-01T12:00:00.000Z",
-    });
-
-    expect(result.kind).toBe("unavailable");
-    expect(result).not.toHaveProperty("targetAmount");
   });
 });

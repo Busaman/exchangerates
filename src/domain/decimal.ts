@@ -1,49 +1,42 @@
-const decimalPattern = /^(0|[1-9]\d*)(\.\d+)?$/;
+import Decimal from "decimal.js";
 
-function normalizedParts(value: string): { integer: string; fraction: string } {
-  if (!decimalPattern.test(value)) {
-    throw new TypeError(`Invalid non-negative decimal string: ${value}`);
-  }
+export const decimalPattern = /^(0|[1-9]\d*)(\.\d+)?$/;
+export const maximumSourceAmount = "1000000000000";
 
-  const [rawInteger, rawFraction = ""] = value.split(".");
-  return {
-    integer: rawInteger.replace(/^0+(?=\d)/, ""),
-    fraction: rawFraction.replace(/0+$/, ""),
-  };
+const ExactDecimal = Decimal.clone({
+  precision: 40,
+  rounding: Decimal.ROUND_HALF_UP,
+  toExpNeg: -100,
+  toExpPos: 100,
+});
+
+export const currencyFractionDigits = {
+  EUR: 2,
+  HUF: 0,
+} as const;
+
+export type SupportedCurrency = keyof typeof currencyFractionDigits;
+
+export function decimal(value: Decimal.Value): Decimal {
+  return new ExactDecimal(value);
 }
 
-/** Compares validated, non-negative decimal strings without binary floating-point conversion. */
+export function roundDecimal(value: Decimal.Value, fractionDigits: number): string {
+  return decimal(value)
+    .toDecimalPlaces(fractionDigits, Decimal.ROUND_HALF_UP)
+    .toFixed(fractionDigits);
+}
+
 export function compareDecimalStrings(left: string, right: string): number {
-  const leftParts = normalizedParts(left);
-  const rightParts = normalizedParts(right);
-
-  if (leftParts.integer.length !== rightParts.integer.length) {
-    return leftParts.integer.length > rightParts.integer.length ? 1 : -1;
+  if (!decimalPattern.test(left) || !decimalPattern.test(right)) {
+    throw new TypeError("Expected non-negative plain decimal strings");
   }
 
-  if (leftParts.integer !== rightParts.integer) {
-    return leftParts.integer > rightParts.integer ? 1 : -1;
-  }
-
-  const fractionLength = Math.max(leftParts.fraction.length, rightParts.fraction.length);
-  const leftFraction = leftParts.fraction.padEnd(fractionLength, "0");
-  const rightFraction = rightParts.fraction.padEnd(fractionLength, "0");
-
-  if (leftFraction === rightFraction) return 0;
-  return leftFraction > rightFraction ? 1 : -1;
+  return decimal(left).comparedTo(decimal(right));
 }
 
-/** Formats deterministic mock calculations while preserving significant integer zeroes. */
-export function formatMockDecimal(value: number, fractionDigits: number): string {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new RangeError("Mock decimal value must be finite and non-negative");
-  }
-
-  const fixed = value.toFixed(fractionDigits);
-  if (/[eE]/.test(fixed)) {
-    throw new RangeError("Mock decimal value is outside the supported fixed-point range");
-  }
-
-  if (fractionDigits === 0) return fixed;
-  return fixed.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+export function isAllowedSourceAmount(value: string): boolean {
+  if (!decimalPattern.test(value)) return false;
+  const amount = decimal(value);
+  return amount.isPositive() && amount.lessThanOrEqualTo(maximumSourceAmount);
 }
