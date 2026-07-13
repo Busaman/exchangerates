@@ -14,7 +14,7 @@ flowchart LR
   UI --> API["Route Handlers / application services"]
   API --> C["Comparison and normalization"]
   C --> A["Provider adapter registry"]
-  A --> O["Official provider source"]
+  A --> O["Official public provider pages"]
   A --> M["Explicit mock adapter"]
   A --> X["Unavailable result"]
   C --> R["Reference-rate adapter (separate provenance)"]
@@ -47,6 +47,16 @@ adapter lookup and all configured adapters. Registrations distinguish `SUPPORTED
 Adding a provider requires its identifier/schema entry, one isolated adapter, contract tests and one
 registry registration—quote orchestration and ranking contain no provider-specific branches.
 
+The Revolut personal adapter is isolated under `src/providers/revolut`. Its rate source fetches only
+the whitelisted Hungary converter URL for the requested direction, identifies NeoRate through its
+User-Agent, enforces a 2.5-second per-attempt timeout and response-size limits, retries twice with
+short backoff, and
+parses the semantic `__NEXT_DATA__` rate object. Zod confirms page configuration, widget currencies,
+direction, timestamp and amount fields; decimal.js checks positivity, plausible pair-specific bounds
+and rate/amount consistency. Security challenges, wrong pages and malformed content are rejected.
+No headless browser, Business API, private endpoint, authenticated session or reciprocal rate is in
+the runtime path.
+
 ## Normalization and comparison
 
 Quotes keep source/target currency, source and resulting amounts, effective rate, explicit fee,
@@ -61,13 +71,21 @@ In the foundation mock, `totalCost` equals the explicit fee because no verified 
 available. Future spread-derived cost must be stored as a separately named component before it can
 be included in `totalCost`, with the cost currency and methodology documented.
 
+For Revolut personal quotes, source precision is retained through fee calculation. Allowance
+consumption is the source HUF amount, or the source EUR amount multiplied by that same directional
+EUR/HUF page rate. Fair-usage fee applies only to the part exceeding remaining monthly allowance;
+the weekend fee applies independently to the full source amount. Both source-currency components
+are added, subtracted once, and the remainder is converted. Only final payout is rounded down to EUR
+2 or HUF 0 decimals; effective rate is derived from that payout. This conservative normalization is
+indicative and not a claim about executable app rounding.
+
 ## Cache and update strategy
 
-No shared cache is required in the foundation phase. A future adapter registry should use a short,
-provider-specific TTL and cache keys containing provider, direction, amount band/amount, plan and
-source version. Store `rateTimestamp` separately from `retrievedAt`. Serve stale numeric data only
-when product policy permits it, preserve its original provenance, mark it `STALE`, display its age,
-and refresh asynchronously. Never extend freshness after a failed refresh.
+There is no shared cache yet. The Revolut rate source has an in-process, direction-keyed 60-second
+fresh cache. After a failed refresh, the last successful observation may be returned for at most 15
+minutes only with `STALE` status; stale quotes are displayed but never ranked best. A failed refresh
+never changes the original `rateTimestamp` or `retrievedAt`. After the stale interval, the adapter
+returns unavailable without numbers. A future shared cache must preserve these semantics.
 
 ## Persistence
 
@@ -83,6 +101,10 @@ include provenance/status timestamps. `LIVE_OFFICIAL` means documented provider-
 `LIVE_UNOFFICIAL` requires explicit approval and labeling; `ESTIMATED` must disclose its method;
 `MOCK` is development/test only. `UNAVAILABLE` has no numeric values. `STALE` retains the original
 source type plus a stale status.
+
+The Revolut public converter is an official Revolut webpage but not a documented machine-readable
+personal quote API, so success is always `LIVE_UNOFFICIAL` with the exact page URL, an indicative
+warning and medium reliability. The page's rate timestamp is distinct from NeoRate retrieval time.
 
 `POST /api/v1/quotes` validates a strict request, including a 30-character amount limit and
 currency-specific minimums of 0.01 EUR and 100 HUF, resolves selected adapters through the registry,
@@ -102,6 +124,7 @@ sequenceDiagram
   API->>S: Validated request
   S->>R: Resolve selected provider IDs
   S->>A: Parallel calls with timeout/AbortSignal
+  A->>A: Fetch, parse, cache, calculate plan fees
   A-->>S: quote | unavailable | exception
   S->>S: Validate, separate issues, rank fresh quotes
   S-->>API: Validated response contract

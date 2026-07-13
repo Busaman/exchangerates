@@ -81,6 +81,12 @@ This rounding mode is a mock-fixture policy, not a universal customer-payout rul
 provider adapter must reproduce and test the provider's documented fee, rate and payout rounding
 direction. Until verified, an adapter must return unavailable rather than apply the mock policy.
 
+The Revolut public page does not document executable payout rounding. For this explicitly
+indicative integration, retain all source/intermediate precision and use `ROUND_DOWN` only once at
+the final target-currency boundary so NeoRate does not overstate the calculated payout. This is a
+NeoRate conservative display rule, is disclosed in the result, and must be replaced if Revolut
+publishes or exposes verifiable personal-app rounding semantics.
+
 The public quote API limits source amounts to 30 characters and applies product minimums of 0.01 EUR
 and 100 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
 payout as the best available quote. Normalized `AVAILABLE` quotes independently require positive
@@ -91,7 +97,36 @@ source amounts, target amounts and effective rates as defense in depth.
 **Status:** Accepted (2026-07-13)
 
 Compose provider adapters only in `ProviderAdapterRegistry`. The quote service selects registry
-entries, applies a 2-second default provider timeout with `AbortSignal`, validates results and ranks
+entries, applies a 10-second default provider timeout with `AbortSignal`, validates results and ranks
 only fresh `AVAILABLE` quotes. Expose this through strict `POST /api/v1/quotes`. Valid partial or
 complete provider failure is a `200` domain response; request validation is `400`, and unexpected
 route failure is a sanitized `500`. Provider errors never expose stack traces or private messages.
+
+## ADR-011 — Revolut Hungary personal public-page integration
+
+**Status:** Accepted with operational caveat (2026-07-13)
+
+Support only Hungarian personal `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA` plans for
+directional EUR/HUF and HUF/EUR. There is no documented public personal quote API available to this
+project. Fetch only the two official Hungary converter pages, parse their structured Next.js rate
+payload, and classify successful observations as `LIVE_UNOFFICIAL`. Never use Revolut Business/Pro,
+private app endpoints, authentication, reciprocal inference, or a reference-rate fallback.
+
+Use a 2.5-second per-attempt source timeout, two retries (150 ms and 400 ms backoff), a 60-second in-process fresh
+cache, and a 15-minute maximum stale window. Page/source timestamps older than 15 minutes, future
+timestamps beyond 2 minutes, challenge pages, inconsistent amounts, wrong directions, and values
+outside configured EUR/HUF or HUF/EUR plausibility bounds are rejected. A cached observation after
+refresh failure is explicitly `STALE` and cannot win comparison.
+
+Fee policy comes from Revolut Hungary's personal fee/help documents: Standard 350,000 HUF at 1%
+overage, Plus 1,050,000 HUF at 0.5%, no weekday fair-usage fee for Premium/Metal/Ultra, and 1% for
+all plans from Friday 17:00 through Sunday 18:00 in `America/New_York`. The interval is half-open at
+Sunday 18:00 and evaluated with IANA DST rules. Plan and the user's prior monthly HUF usage are
+mandatory context; NeoRate never guesses account usage. Fair-usage and weekend components are
+calculated independently on source value, summed, then deducted before conversion.
+
+The public page may be bot-blocked and its markup may change. Saved fixtures contain only the
+minimal structured evidence. The Hungarian legal page also describes a conditional migration-linked
+special transaction fee whose customer activation cannot be inferred from public context; it is not
+modeled and the UI requires final app verification. This adapter is not production approval to rely
+on the page as an executable quote.

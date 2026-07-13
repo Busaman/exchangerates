@@ -21,6 +21,7 @@ describe("provider registry", () => {
     expect(providerRegistry.list()).toEqual([
       { id: "MOCK_PROVIDER", name: "Demo Fintech", status: "SUPPORTED" },
       { id: "UNAVAILABLE_PROVIDER", name: "Unavailable example", status: "UNAVAILABLE" },
+      { id: "REVOLUT", name: "Revolut Personal (HU)", status: "SUPPORTED" },
     ]);
     expect(providerRegistry.get("MOCK_PROVIDER").adapter).toBeInstanceOf(MockProviderAdapter);
   });
@@ -70,9 +71,13 @@ describe("getQuotes", () => {
       deterministicDependencies,
     );
 
-    expect(response.request.providers).toEqual(["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"]);
+    expect(response.request.providers).toEqual([
+      "MOCK_PROVIDER",
+      "UNAVAILABLE_PROVIDER",
+      "REVOLUT",
+    ]);
     expect(response.quotes).toHaveLength(1);
-    expect(response.issues).toHaveLength(1);
+    expect(response.issues).toHaveLength(2);
     expect(response.sourceStatus).toBe("PARTIAL_SUCCESS");
   });
 

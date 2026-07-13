@@ -33,6 +33,16 @@ export function runProviderAdapterContract({
           result.effectiveRate,
           result.explicitFee.amount,
           result.totalCost.amount,
+          ...(result.providerDetails?.type === "REVOLUT_PERSONAL"
+            ? [
+                result.providerDetails.displayedBaseRate,
+                result.providerDetails.fairUsageFee.amount,
+                result.providerDetails.weekendFee.amount,
+                result.providerDetails.totalFee.amount,
+                result.providerDetails.allowanceUsedBeforeQuoteHuf,
+                result.providerDetails.allowanceConsumedByQuoteHuf,
+              ]
+            : []),
         ]) {
           expect(value).toMatch(decimalPattern);
         }

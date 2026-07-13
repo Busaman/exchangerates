@@ -10,6 +10,7 @@ import {
   availableQuoteSchema,
   providerErrorResultSchema,
   providerIdentifierSchema,
+  providerContextsSchema,
   supportedCurrencyCodeSchema,
   unavailableQuoteSchema,
   positiveDecimalStringSchema,
@@ -29,6 +30,7 @@ export const quoteApiRequestSchema = z
       .refine(isAllowedSourceAmount, `Source amount must not exceed ${maximumSourceAmount}`),
     providers: z.array(providerIdentifierSchema).min(1).max(20).optional(),
     customerPlan: z.string().trim().min(1).max(100).nullable().optional(),
+    providerContexts: providerContextsSchema.optional(),
   })
   .strict()
   .superRefine((request, context) => {
@@ -65,7 +67,7 @@ export const quoteSourceStatusSchema = z.enum([
   "PARTIAL_SUCCESS",
   "NO_AVAILABLE_QUOTES",
 ]);
-export const quoteWarningSchema = z.enum(["MOCK_DATA"]);
+export const quoteWarningSchema = z.enum(["MOCK_DATA", "REVOLUT_INDICATIVE"]);
 
 export const quoteApiResponseSchema = z
   .object({
@@ -76,6 +78,7 @@ export const quoteApiResponseSchema = z
       sourceAmount: positiveDecimalStringSchema,
       providers: z.array(providerIdentifierSchema),
       customerPlan: z.string().nullable(),
+      providerContexts: providerContextsSchema.optional(),
     }),
     quotes: z.array(availableQuoteSchema),
     issues: z.array(

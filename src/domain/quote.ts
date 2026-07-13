@@ -1,7 +1,16 @@
 import { z } from "zod";
-import { decimalPattern } from "@/domain/decimal";
+import {
+  decimal,
+  decimalPattern,
+  maximumSourceAmount,
+  maximumSourceAmountLength,
+} from "@/domain/decimal";
 
-export const providerIdentifierSchema = z.enum(["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"]);
+export const providerIdentifierSchema = z.enum([
+  "MOCK_PROVIDER",
+  "UNAVAILABLE_PROVIDER",
+  "REVOLUT",
+]);
 export const supportedCurrencyCodeSchema = z.enum(["EUR", "HUF"]);
 export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/);
 export const decimalStringSchema = z
@@ -26,6 +35,28 @@ export const providerErrorCodeSchema = z.enum([
   "PROVIDER_EXCEPTION",
   "PROVIDER_INVALID_RESPONSE",
 ]);
+
+export const revolutPersonalPlanSchema = z.enum(["STANDARD", "PLUS", "PREMIUM", "METAL", "ULTRA"]);
+
+export const revolutPersonalContextSchema = z
+  .object({
+    plan: revolutPersonalPlanSchema,
+    monthlyExchangeUsedHuf: z
+      .string()
+      .max(maximumSourceAmountLength)
+      .pipe(decimalStringSchema)
+      .refine(
+        (value) => decimal(value).lessThanOrEqualTo(maximumSourceAmount),
+        `Monthly exchange usage must not exceed ${maximumSourceAmount} HUF`,
+      ),
+  })
+  .strict();
+
+export const providerContextsSchema = z
+  .object({
+    REVOLUT: revolutPersonalContextSchema.optional(),
+  })
+  .strict();
 
 export const providerSchema = z.object({
   id: providerIdentifierSchema,
@@ -58,6 +89,7 @@ export const quoteRequestSchema = z
     providerId: providerIdentifierSchema,
     sourceAmount: positiveDecimalStringSchema,
     customerPlan: z.string().min(1).optional(),
+    providerContexts: providerContextsSchema.optional(),
     requestedAt: z.iso.datetime(),
   })
   .refine((request) => request.sourceCurrency !== request.targetCurrency, {
@@ -84,6 +116,24 @@ export const availableQuoteSchema = z.object({
   sourceUrl: z.url().optional(),
   customerPlan: z.string().min(1).optional(),
   disclaimer: z.string().min(1).optional(),
+  providerDetails: z
+    .object({
+      type: z.literal("REVOLUT_PERSONAL"),
+      plan: revolutPersonalPlanSchema,
+      displayedBaseRate: positiveDecimalStringSchema,
+      fairUsageFee: monetaryAmountSchema,
+      weekendFee: monetaryAmountSchema,
+      totalFee: monetaryAmountSchema,
+      feeCurrency: currencyCodeSchema,
+      fairUsageAllowanceHuf: decimalStringSchema.nullable(),
+      allowanceUsedBeforeQuoteHuf: decimalStringSchema,
+      allowanceConsumedByQuoteHuf: decimalStringSchema,
+      remainingAllowanceAfterQuoteHuf: decimalStringSchema.nullable(),
+      marketSession: z.enum(["WEEKDAY", "WEEKEND"]),
+      indicativeWarning: z.string().min(1),
+    })
+    .strict()
+    .optional(),
 });
 
 export const unavailableQuoteSchema = z.object({
@@ -96,6 +146,7 @@ export const unavailableQuoteSchema = z.object({
   retrievedAt: z.iso.datetime(),
   reason: z.string().min(1),
   sourceId: z.string().min(1).optional(),
+  sourceUrl: z.url().optional(),
 });
 
 export const providerErrorResultSchema = z.object({
@@ -117,6 +168,9 @@ export const quoteResultSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type ProviderIdentifier = z.infer<typeof providerIdentifierSchema>;
+export type RevolutPersonalPlan = z.infer<typeof revolutPersonalPlanSchema>;
+export type RevolutPersonalContext = z.infer<typeof revolutPersonalContextSchema>;
+export type ProviderContexts = z.infer<typeof providerContextsSchema>;
 export type CurrencyCode = z.infer<typeof currencyCodeSchema>;
 export type SupportedCurrencyCode = z.infer<typeof supportedCurrencyCodeSchema>;
 export type Provider = z.infer<typeof providerSchema>;

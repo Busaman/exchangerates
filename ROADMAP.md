@@ -10,11 +10,12 @@ Prisma schema, unit test tooling, health endpoint and transparent initial UI.
 The normalized quote/error union, decimal.js calculations, deterministic mock, unavailable example,
 adapter contract suite, registry, timeout isolation and regression tests are complete.
 
-## 3. Official or legally reliable provider integrations — next
+## 3. Official or legally reliable provider integrations — in progress
 
-Evaluate Wise, Revolut, ZEN and PayPal sources independently. Record terms, authentication, limits,
-plans, timestamps and reliability before implementing any adapter. Investigate Gránit Bank only if a
-reliable legal source is identified.
+The first adapter is implemented for Hungarian personal Revolut EUR/HUF and HUF/EUR using only the
+official public converter pages, strict parsing, explicit `LIVE_UNOFFICIAL` labeling and no fallback.
+It remains operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
+after source/legal review. Investigate Gránit Bank only if a reliable legal source is identified.
 
 ## 4. Historical rate storage — planned
 
@@ -41,7 +42,7 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Research and document the first real provider integration candidate. Evaluate official API/legal
-source availability, terms, authentication, rate limits, supported plans/directions, timestamp and
-fee semantics, data retention and fallback behavior. Produce an ADR and sanitized contract-fixture
-plan before writing any live adapter code.**
+**Deploy the Revolut adapter to a controlled Vercel staging environment and verify plain-HTTP page
+access, parser success rate, latency, challenge frequency, cache/stale transitions and fee output in
+both directions. Obtain legal/product approval for continued public-page parsing before treating it
+as production data; add telemetry and an operational disable switch without adding a fallback.**

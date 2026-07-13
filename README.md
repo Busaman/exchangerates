@@ -5,9 +5,11 @@ neobanks, fintech providers and selected banks, after known provider margins and
 supported directions are EUR/HUF and HUF/EUR; the domain and adapter boundaries are designed for
 more currencies and providers.
 
-> **Foundation status:** the application currently displays one deterministic mock provider and one
-> intentionally unavailable provider. It does **not** show live or executable rates and is not
-> production-ready. A market mid-rate must never be presented as a provider customer rate.
+> **Current status:** NeoRate includes an experimental Hungarian personal Revolut adapter, one
+> deterministic mock and one intentionally unavailable provider. Revolut data is parsed from an
+> official public webpage, classified `LIVE_UNOFFICIAL`, and is indicative—not executable. Public
+> page blocking or validation failure produces no numeric Revolut quote. Always confirm the final
+> rate and fees in the Revolut app. NeoRate currently covers personal-provider pricing only.
 
 ## Selected stack
 
@@ -48,10 +50,23 @@ characters, values below the source-currency minimum (0.01 EUR or 100 HUF), and 
   "sourceCurrency": "EUR",
   "targetCurrency": "HUF",
   "sourceAmount": "1000",
-  "providers": ["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"],
-  "customerPlan": null
+  "providers": ["REVOLUT"],
+  "customerPlan": null,
+  "providerContexts": {
+    "REVOLUT": {
+      "plan": "STANDARD",
+      "monthlyExchangeUsedHuf": "0"
+    }
+  }
 }
 ```
+
+Select `REVOLUT` to request Hungarian personal pricing. `plan` must be one of `STANDARD`, `PLUS`,
+`PREMIUM`, `METAL`, or `ULTRA`; Business and Pro are rejected. An amount-aware Revolut quote also
+requires the customer's own `monthlyExchangeUsedHuf` value because NeoRate cannot read account
+usage and the Standard/Plus allowance applies across qualifying monthly exchanges. Omitting the
+whole Revolut context yields a numeric-field-free unavailable result; malformed or partial context
+is a `400` validation error.
 
 A successful HTTP response uses status `200`, including partial or fully unavailable provider
 outcomes. It contains request metadata, normalized `quotes`, numeric-field-free `issues`,
@@ -113,8 +128,25 @@ Invalid JSON or input returns `400` with
 `INVALID_JSON` or `VALIDATION_ERROR`. Unexpected server failures return a sanitized `500
 INTERNAL_ERROR`; stack traces and internal provider errors are never returned.
 
-Provider calls time out after 2 seconds by default. One timeout or exception becomes a provider-level
+Provider calls time out after 10 seconds by default. One timeout or exception becomes a provider-level
 `FAILED` issue and does not remove valid results from other providers.
+
+### Revolut personal quote fields
+
+A successful Revolut result has provider id `REVOLUT`, source type `LIVE_UNOFFICIAL`, the exact
+converter `sourceUrl`, source and retrieval timestamps, and `providerDetails.type` set to
+`REVOLUT_PERSONAL`. Details include the displayed directional base rate, personal plan,
+`fairUsageFee`, `weekendFee`, `totalFee`, fee currency, HUF allowance usage/consumption/remaining
+values, and `WEEKDAY` or `WEEKEND`. Responses also include `REVOLUT_INDICATIVE`; the final quote must
+be checked in-app.
+
+Only these official pages are fetched:
+
+- `https://www.revolut.com/hu-HU/currency-converter/convert-eur-to-huf-exchange-rate/`
+- `https://www.revolut.com/hu-HU/currency-converter/convert-huf-to-eur-exchange-rate/`
+
+Revolut exposes no documented public personal quote API for this integration. NeoRate does not use
+Business APIs, private app endpoints, authentication, reciprocal rates, or market-rate fallbacks.
 
 ## Decimal and rounding rules
 
@@ -123,6 +155,12 @@ The deterministic mock rounds fees and target amounts with `ROUND_HALF_UP` to th
 (EUR 2, HUF 0), and effective rates to 8 decimal places. The rounded explicit fee is deducted before
 target conversion. This is not a universal provider policy: future real adapters must implement and
 test the provider's documented rounding direction. See `DECISIONS.md` for the authoritative policy.
+
+The Revolut adapter preserves the structured page rate precision. It computes fair-usage and
+weekend fees independently in the source currency, adds them, subtracts the total once, converts at
+the directional base rate, and conservatively rounds the final payout down to the target currency
+scale. Intermediate values are not rounded. Friday 17:00 through Sunday 18:00 is evaluated in
+`America/New_York`, including daylight-saving transitions.
 
 ## Environment variables
 
@@ -167,9 +205,11 @@ environment, provision a reachable PostgreSQL database, run migrations as a cont
 step, and deploy with the standard Next.js build command. The health endpoint verifies the web
 process only; database readiness should be added when persistence becomes part of the request path.
 
-Current limitations: only a deterministic mock adapter and an intentionally unavailable example are
-registered. No quote is live or executable, persistence is not yet connected to the quote request
-path, and no external provider integration exists.
+Current limitations: Revolut covers only Hungarian personal EUR/HUF and HUF/EUR. The public-page
+parser is fragile by nature and Revolut may return a security/challenge page to server-side HTTP;
+that safely becomes unavailable. The adapter does not know real monthly usage, does not model the
+separately documented conditional Hungarian migration transaction fee, and cannot promise the app's
+executable rounding or total. Persistence is not yet connected to the quote request path.
 
 ## Project context
 

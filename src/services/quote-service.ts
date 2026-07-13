@@ -19,7 +19,7 @@ import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { ProviderAdapterRegistry, providerRegistry } from "@/providers/provider-registry";
 import { createProviderErrorResult } from "@/providers/unavailable-result";
 
-export const defaultProviderTimeoutMs = 2_000;
+export const defaultProviderTimeoutMs = 10_000;
 
 class ProviderTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
@@ -98,6 +98,7 @@ export async function getQuotes(
         targetCurrency: request.targetCurrency,
         sourceAmount: request.sourceAmount,
         customerPlan: request.customerPlan ?? undefined,
+        providerContexts: request.providerContexts,
         requestedAt: generatedAt,
       };
 
@@ -130,9 +131,12 @@ export async function getQuotes(
       : rankableQuotes.length < results.length
         ? "PARTIAL_SUCCESS"
         : "SUCCESS";
-  const warnings = quotes.some((quote) => quote.sourceType === "MOCK")
-    ? (["MOCK_DATA"] as const)
-    : [];
+  const warnings = [
+    ...(quotes.some((quote) => quote.sourceType === "MOCK") ? (["MOCK_DATA"] as const) : []),
+    ...(quotes.some((quote) => quote.sourceType === "LIVE_UNOFFICIAL")
+      ? (["REVOLUT_INDICATIVE"] as const)
+      : []),
+  ];
 
   return quoteApiResponseSchema.parse({
     request: {
@@ -142,6 +146,7 @@ export async function getQuotes(
       sourceAmount: request.sourceAmount,
       providers: providerIds,
       customerPlan: request.customerPlan ?? null,
+      providerContexts: request.providerContexts,
     },
     quotes,
     issues,

@@ -9,6 +9,8 @@ import {
 } from "@/domain/quote-api";
 import {
   supportedCurrencyCodeSchema,
+  revolutPersonalPlanSchema,
+  type RevolutPersonalPlan,
   type QuoteResult,
   type SupportedCurrencyCode,
 } from "@/domain/quote";
@@ -23,6 +25,17 @@ const initialRequest: QuoteApiRequest = {
   targetCurrency: "HUF",
   sourceAmount: "1000",
   customerPlan: null,
+  providerContexts: {
+    REVOLUT: { plan: "STANDARD", monthlyExchangeUsedHuf: "0" },
+  },
+};
+
+const revolutPlanNames: Readonly<Record<RevolutPersonalPlan, string>> = {
+  STANDARD: "Standard",
+  PLUS: "Plus",
+  PREMIUM: "Premium",
+  METAL: "Metal",
+  ULTRA: "Ultra",
 };
 
 const genericApiErrorMessage = "A quote szolgáltatás válasza nem feldolgozható.";
@@ -45,6 +58,7 @@ function labelForStatus(result: QuoteResult): string {
   if (result.kind === "error")
     return result.errorCode === "PROVIDER_TIMEOUT" ? "Időtúllépés" : "Hiba";
   if (result.status === "STALE") return "Elavult";
+  if (result.sourceType === "LIVE_UNOFFICIAL") return "Élő · nem hivatalos API";
   return result.sourceType === "MOCK" ? "Mock adat" : result.status;
 }
 
@@ -86,6 +100,8 @@ export function ComparisonTool() {
   const [sourceCurrency, setSourceCurrency] = useState<SupportedCurrencyCode>("EUR");
   const [targetCurrency, setTargetCurrency] = useState<SupportedCurrencyCode>("HUF");
   const [amount, setAmount] = useState("1000");
+  const [revolutPlan, setRevolutPlan] = useState<RevolutPersonalPlan>("STANDARD");
+  const [monthlyExchangeUsedHuf, setMonthlyExchangeUsedHuf] = useState("0");
   const [view, setView] = useState<ViewState>({ status: "loading" });
 
   useEffect(() => {
@@ -113,6 +129,12 @@ export function ComparisonTool() {
         targetCurrency,
         sourceAmount: amount.trim().replace(",", "."),
         customerPlan: null,
+        providerContexts: {
+          REVOLUT: {
+            plan: revolutPlan,
+            monthlyExchangeUsedHuf: monthlyExchangeUsedHuf.trim().replace(",", "."),
+          },
+        },
       });
       setView({ status: "success", data });
     } catch (error) {
@@ -147,8 +169,44 @@ export function ComparisonTool() {
             </p>
           </div>
           <span className="rounded-md bg-rose-400/10 px-2.5 py-1 font-mono text-xs font-semibold text-rose-200">
-            MOCK · NEM ÉLŐ
+            INDIKATÍV · NEM VÉGREHAJTHATÓ
           </span>
+        </div>
+        <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 sm:grid-cols-2">
+          <label className="grid gap-2 text-sm font-medium text-slate-300">
+            Revolut személyes csomag
+            <select
+              value={revolutPlan}
+              onChange={(event) =>
+                setRevolutPlan(revolutPersonalPlanSchema.parse(event.target.value))
+              }
+              className="h-11 rounded-lg border border-white/10 bg-[#12233a] px-3 text-white"
+            >
+              {Object.entries(revolutPlanNames).map(([plan, name]) => (
+                <option key={plan} value={plan}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-medium text-slate-300">
+            Ebben a ciklusban már átváltott összeg
+            <div className="flex h-11 items-center rounded-lg border border-white/10 bg-[#12233a] focus-within:border-emerald-300">
+              <input
+                value={monthlyExchangeUsedHuf}
+                onChange={(event) => setMonthlyExchangeUsedHuf(event.target.value)}
+                inputMode="decimal"
+                className="min-w-0 flex-1 bg-transparent px-3 outline-none"
+                aria-describedby="revolut-usage-help"
+              />
+              <span className="pr-3 font-mono text-sm text-slate-400">HUF</span>
+            </div>
+          </label>
+          <p id="revolut-usage-help" className="text-xs leading-5 text-slate-400 sm:col-span-2">
+            A Revolut Standard és Plus kerete a teljes havi jogosult átváltási forgalomra
+            vonatkozik. NeoRate nem ismeri a fiókod tényleges használatát, ezért ezt neked kell
+            megadnod.
+          </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_1.2fr_auto] md:items-end">
@@ -255,7 +313,9 @@ export function ComparisonTool() {
                   <div className="font-semibold text-white">{result.provider.name}</div>
                   {data?.bestProviderId === result.provider.id && (
                     <span className="mt-1 inline-block text-xs font-medium text-emerald-300">
-                      Legjobb elérhető mock eredmény
+                      {result.kind === "quote" && result.sourceType === "MOCK"
+                        ? "Legjobb elérhető mock eredmény"
+                        : "Legjobb elérhető indikatív eredmény"}
                     </span>
                   )}
                 </td>
@@ -265,11 +325,44 @@ export function ComparisonTool() {
                       {formatMoney(result.targetAmount.amount, result.targetAmount.currency)}
                     </td>
                     <td className="px-4 py-5 font-mono text-sm text-slate-300">
+                      {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
+                        <span className="mb-1 block text-xs text-slate-500">
+                          Alap: 1 {result.pair.sourceCurrency} ={" "}
+                          {formatRate(result.providerDetails.displayedBaseRate)}{" "}
+                          {result.pair.targetCurrency}
+                        </span>
+                      ) : null}
                       1 {result.pair.sourceCurrency} = {formatRate(result.effectiveRate)}{" "}
                       {result.pair.targetCurrency}
                     </td>
                     <td className="px-4 py-5 text-sm text-slate-300">
-                      {formatMoney(result.explicitFee.amount, result.explicitFee.currency)}
+                      {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
+                        <span className="grid gap-1 text-xs">
+                          <span>
+                            Keretdíj:{" "}
+                            {formatMoney(
+                              result.providerDetails.fairUsageFee.amount,
+                              result.providerDetails.feeCurrency,
+                            )}
+                          </span>
+                          <span>
+                            Hétvégi:{" "}
+                            {formatMoney(
+                              result.providerDetails.weekendFee.amount,
+                              result.providerDetails.feeCurrency,
+                            )}
+                          </span>
+                          <strong className="text-slate-200">
+                            Összesen:{" "}
+                            {formatMoney(
+                              result.providerDetails.totalFee.amount,
+                              result.providerDetails.feeCurrency,
+                            )}
+                          </strong>
+                        </span>
+                      ) : (
+                        formatMoney(result.explicitFee.amount, result.explicitFee.currency)
+                      )}
                     </td>
                   </>
                 ) : (
@@ -302,6 +395,14 @@ export function ComparisonTool() {
           <>
             <strong className="text-amber-100">Figyelem:</strong> a megjelenített ajánlat
             determinisztikus mock adat, nem élő vagy végrehajtható árfolyam.{" "}
+          </>
+        ) : null}
+        {data?.warnings.includes("REVOLUT_INDICATIVE") ? (
+          <>
+            <strong className="text-amber-100">Revolut:</strong> a nyilvános oldali ráta
+            LIVE_UNOFFICIAL besorolású és indikatív. A végrehajtható árfolyamot, a díjakat és az
+            esetleges magyar migrációhoz kötött speciális díjat mindig ellenőrizd a Revolut
+            appban.{" "}
           </>
         ) : null}
         {view.status === "loading" ? "A quote API válaszára várunk." : null}

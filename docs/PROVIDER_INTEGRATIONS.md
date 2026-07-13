@@ -39,3 +39,50 @@ results with public error codes; private exception details remain in structured 
   timestamps, provenance and numeric-field-free non-quote results.
 
 Keep a new adapter disabled until its source, tests and user-facing labeling have been reviewed.
+
+## Revolut Hungary personal adapter
+
+Scope is personal customers only: `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA`, with explicit
+plan and `monthlyExchangeUsedHuf` context. Revolut Business, Pro, merchant/corporate products,
+authenticated accounts, private endpoints and reciprocal inference are prohibited.
+
+Approved rate pages:
+
+- `https://www.revolut.com/hu-HU/currency-converter/convert-eur-to-huf-exchange-rate/`
+- `https://www.revolut.com/hu-HU/currency-converter/convert-huf-to-eur-exchange-rate/`
+
+Fee policy sources:
+
+- `https://help.revolut.com/hu-HU/help/wealth/exchanging-money/how-much-does-it-cost-to-make-an-exchange/will-i-be-charged-for-exchanging-foreign-currencies/`
+- `https://www.revolut.com/hu-HU/legal/standard-fees/`
+
+There is no documented public personal Revolut quote API. The official page is not a documented
+machine contract, so parsed rates are `LIVE_UNOFFICIAL`, medium-reliability and explicitly
+indicative. Preserve exact URL, page timestamp and retrieval timestamp. The runtime uses plain HTTP
+only; if Revolut returns a challenge/access page, parsing fails and no fallback is allowed. Current
+manual evidence showed browser-accessible `__NEXT_DATA__` with independent `from`, `to`, `rate`,
+`timestamp`, `senderAmount`, and `recipientAmount`, while generic and browser-header server requests
+returned HTTP 403 security/access pages. This fragility is expected and must be monitored.
+
+Parser fixtures under `src/providers/revolut/fixtures` are sanitized minimal HTML documents, not
+full-page captures. Tests never call Revolut. The rate source uses a NeoRate-identifying User-Agent,
+2.5-second per-attempt timeout, two bounded retries, 60-second fresh cache and 15-minute stale ceiling. Only a last
+successful observation can become `STALE`; it is never ranked. Wrong direction, challenge content,
+missing/invalid structured data, stale/future timestamp, internally inconsistent amounts and
+configured implausible rates all become unavailable with no substituted value.
+
+Fee order is:
+
+1. Calculate quote allowance consumption in HUF (HUF source directly; EUR source times the current
+   directional page rate solely for allowance accounting).
+2. Calculate fair-usage fee in source currency only on the part above remaining monthly allowance.
+3. Calculate the 1% weekend fee independently on the full source amount during Friday 17:00 through
+   Sunday 18:00 `America/New_York` (`[Friday 17:00, Sunday 18:00)`, DST-aware).
+4. Add `fairUsageFee + weekendFee`, subtract once from source, multiply by the directional base rate,
+   then round final target payout down to target scale. Do not round intermediate decimals.
+
+The result exposes both fee components, total, fee currency, plan, allowance before/consumed/after,
+market session, base/effective rates and indicative warning. Revolut's legal page separately notes a
+conditional Hungarian migration-linked special transaction fee. Because public request context
+cannot establish its activation for a customer, NeoRate does not calculate it and requires final
+verification in the Revolut app.

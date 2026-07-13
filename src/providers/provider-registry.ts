@@ -1,6 +1,7 @@
 import { providerIdentifierSchema, type ProviderIdentifier } from "@/domain/quote";
 import { MockProviderAdapter } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
+import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
 import { UnavailableProviderAdapter } from "@/providers/unavailable-provider";
 
 export type ProviderRegistrationStatus = "SUPPORTED" | "UNAVAILABLE";
@@ -49,4 +50,5 @@ export class ProviderAdapterRegistry {
 export const providerRegistry = new ProviderAdapterRegistry([
   { adapter: new MockProviderAdapter(), status: "SUPPORTED" },
   { adapter: new UnavailableProviderAdapter(), status: "UNAVAILABLE" },
+  { adapter: new RevolutProviderAdapter(), status: "SUPPORTED" },
 ]);
