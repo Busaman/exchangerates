@@ -81,11 +81,10 @@ This rounding mode is a mock-fixture policy, not a universal customer-payout rul
 provider adapter must reproduce and test the provider's documented fee, rate and payout rounding
 direction. Until verified, an adapter must return unavailable rather than apply the mock policy.
 
-The Revolut public page does not document executable payout rounding. For this explicitly
-indicative integration, retain all source/intermediate precision and use `ROUND_DOWN` only once at
-the final target-currency boundary so NeoRate does not overstate the calculated payout. This is a
-NeoRate conservative display rule, is disclosed in the result, and must be replaced if Revolut
-publishes or exposes verifiable personal-app rounding semantics.
+The Revolut JSON client does not apply a NeoRate payout rounding rule. It preserves the endpoint's
+actual sender and recipient amounts and uses decimal.js only to derive and validate values such as
+effective rate. Any precision or rounding in those returned amounts belongs to the endpoint contract
+and remains indicative rather than a claim about executable app rounding.
 
 The public quote API limits source amounts to 30 characters and applies product minimums of 0.01 EUR
 and 100 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
@@ -103,35 +102,50 @@ results and ranks only fresh `AVAILABLE` quotes. Expose this through strict `POS
 complete provider failure is a `200` domain response; request validation is `400`, and unexpected
 route failure is a sanitized `500`. Provider errors never expose stack traces or private messages.
 
-## ADR-011 — Revolut Hungary personal public-page integration
+## ADR-011 — Revolut Hungary personal public JSON integration
 
 **Status:** Accepted with operational caveat (2026-07-13)
 
 Support only Hungarian personal `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA` plans for
-directional EUR/HUF and HUF/EUR. There is no documented public personal quote API available to this
-project. Fetch only the two official Hungary converter pages, parse their structured Next.js rate
-payload, and classify successful observations as `LIVE_UNOFFICIAL`. Never use Revolut Business/Pro,
-private app endpoints, authentication, reciprocal inference, or a reference-rate fallback.
+directional EUR/HUF and HUF/EUR. Revolut's official converter uses the publicly reachable
+`GET https://www.revolut.com/api/exchange/quote` endpoint, but Revolut does not document it as a
+supported external personal API. Fetch it with `amount`, `country=HU`, `fromCurrency`,
+`isRecipientAmount=false`, and `toCurrency`; classify successful observations as
+`LIVE_UNOFFICIAL`. Never use HTML/`__NEXT_DATA__`, cookies, authorization, user/browser identifiers,
+browser automation, Revolut Business/Pro, private authenticated app endpoints, reciprocal
+inference, or a reference-rate fallback.
 
 Use a 2.5-second per-attempt source timeout, two retries (150 ms and 400 ms backoff), a 60-second
-in-process fresh cache, a 30-second negative-result cache, per-direction single-flight refreshes,
-and a 15-minute maximum stale window. Negative caching reduces repeated blocked traffic but never
-renews a successful observation or extends the stale window. Page/source timestamps older than 15 minutes, future
-timestamps beyond 2 minutes, challenge pages, inconsistent amounts, wrong directions, and values
-outside configured EUR/HUF or HUF/EUR plausibility bounds are rejected. A cached observation after
-refresh failure is explicitly `STALE` and cannot win comparison.
+in-process fresh cache, a 30-second negative-result cache, amount/plan-specific single-flight
+refreshes, and a 15-minute maximum stale window. Negative caching reduces repeated blocked traffic
+but never renews a successful observation or extends the stale window. Endpoint timestamps older
+than 15 minutes, future timestamps beyond 2 minutes, non-JSON content, redirects, inconsistent
+sender/recipient/rate values, wrong directions, invalid plan fee data, and values outside configured
+EUR/HUF or HUF/EUR plausibility bounds are rejected. A cached observation after refresh failure is
+explicitly `STALE` and cannot win comparison.
 
-Fee policy comes from Revolut Hungary's personal fee/help documents: Standard 350,000 HUF at 1%
-overage, Plus 1,050,000 HUF at 0.5%, no weekday fair-usage fee for Premium/Metal/Ultra, and 1% for
-all plans from Friday 17:00 through Sunday 18:00 in `America/New_York`. The interval is half-open at
-Sunday 18:00 and evaluated with IANA DST rules. Plan and the user's prior rolling-30-day HUF usage
-are mandatory context; NeoRate never guesses account usage. Fair-usage and weekend components are
-calculated independently on source value, summed, then deducted before conversion.
+Sender amount and currencies must match exactly. The raw rate is checked against actual
+recipient/sender using a configurable 0.5% relative tolerance only to accommodate the endpoint's
+displayed recipient precision; this tolerance does not alter any amount, rate or fee returned to the
+user. Fee and total-source-cost identities remain exact decimal comparisons.
 
-The public page may be bot-blocked and its markup may change. Saved fixtures contain only the
-minimal structured evidence. The Hungarian legal page also describes a conditional migration-linked
+The selected plan's complete endpoint fee object is authoritative for this indicative quote. NeoRate
+requires an exact personal plan match, validates `fees.fx`, `fees.total`, and `fees.cost`, requires a
+consistent source fee currency and total source-side cost, and uses that fee once. It does not
+manually recalculate fair-usage or weekend fees and therefore cannot double-charge them.
+
+The endpoint request contains no account identity or prior rolling-30-day usage. Sanitized fixtures
+show complete per-plan fee objects without such context; the 2026-07-13 live probe could not verify
+below/above-allowance or weekend behavior because the current endpoint returned HTTP 400 with
+`Required 'localeCode' is missing` for the required no-cookie request. Adding an undocumented
+locale parameter/header would be speculation, so NeoRate removes the usage input and labels every
+successful quote `FULL_ALLOWANCE_ASSUMED`. This is less misleading than accepting account usage
+while also using endpoint-computed fees. Actual allowance and weekend fees must be verified in-app.
+
+The endpoint is undocumented and its contract/access requirements may change. Saved JSON fixtures
+contain only sanitized contract evidence and tests never call Revolut. The Hungarian legal page also describes a conditional migration-linked
 special transaction fee whose customer activation cannot be inferred from public context; it is not
 modeled and the UI requires final app verification. This adapter is not production approval to rely
 on the page as an executable quote. The registration is `UNAVAILABLE` by default and performs no
 outbound request. `REVOLUT_ADAPTER_ENABLED=true` is an explicit staging-only opt-in until live
-server access, parser reliability and legal/product approval have been demonstrated.
+server access, JSON-contract reliability and legal/product approval have been demonstrated.

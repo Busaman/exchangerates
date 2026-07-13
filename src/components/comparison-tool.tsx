@@ -14,7 +14,6 @@ import {
   type QuoteResult,
   type SupportedCurrencyCode,
 } from "@/domain/quote";
-import { QuoteApiRequestError, quoteApiFieldMessage } from "@/components/quote-api-errors";
 
 const currencyNames = {
   EUR: "EUR · euró",
@@ -27,7 +26,7 @@ const initialRequest: QuoteApiRequest = {
   sourceAmount: "1000",
   customerPlan: null,
   providerContexts: {
-    REVOLUT: { plan: "STANDARD", rollingThirtyDayExchangeUsedHuf: "0" },
+    REVOLUT: { plan: "STANDARD" },
   },
 };
 
@@ -88,10 +87,7 @@ async function fetchQuotes(
   if (!response.ok) {
     const parsedError = quoteApiErrorResponseSchema.safeParse(payload);
     if (parsedError.success) {
-      throw new QuoteApiRequestError(
-        parsedError.data.error.message,
-        parsedError.data.error.fields ?? {},
-      );
+      throw new Error(parsedError.data.error.message);
     }
     throw new Error("A kérés sikertelen volt.");
   }
@@ -106,8 +102,6 @@ export function ComparisonTool() {
   const [targetCurrency, setTargetCurrency] = useState<SupportedCurrencyCode>("HUF");
   const [amount, setAmount] = useState("1000");
   const [revolutPlan, setRevolutPlan] = useState<RevolutPersonalPlan>("STANDARD");
-  const [rollingThirtyDayExchangeUsedHuf, setRollingThirtyDayExchangeUsedHuf] = useState("0");
-  const [revolutUsageError, setRevolutUsageError] = useState("");
   const [view, setView] = useState<ViewState>({ status: "loading" });
 
   useEffect(() => {
@@ -127,7 +121,6 @@ export function ComparisonTool() {
 
   async function submitComparison(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setRevolutUsageError("");
     setView({ status: "loading" });
 
     try {
@@ -137,26 +130,14 @@ export function ComparisonTool() {
         sourceAmount: amount.trim().replace(",", "."),
         customerPlan: null,
         providerContexts: {
-          REVOLUT: {
-            plan: revolutPlan,
-            rollingThirtyDayExchangeUsedHuf: rollingThirtyDayExchangeUsedHuf
-              .trim()
-              .replace(",", "."),
-          },
+          REVOLUT: { plan: revolutPlan },
         },
       });
       setView({ status: "success", data });
     } catch (error) {
-      const usageError = quoteApiFieldMessage(error, "providerContexts");
-      setRevolutUsageError(usageError ?? "");
       setView({
         status: "error",
-        message:
-          usageError !== undefined
-            ? ""
-            : error instanceof Error
-              ? error.message
-              : "A kérés sikertelen volt.",
+        message: error instanceof Error ? error.message : "A kérés sikertelen volt.",
       });
     }
   }
@@ -188,7 +169,7 @@ export function ComparisonTool() {
             INDIKATÍV · NEM VÉGREHAJTHATÓ
           </span>
         </div>
-        <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4">
           <label className="grid gap-2 text-sm font-medium text-slate-300">
             Revolut személyes csomag
             <select
@@ -205,35 +186,10 @@ export function ComparisonTool() {
               ))}
             </select>
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-300">
-            Az elmúlt 30 napban átváltott összeg
-            <div className="flex h-11 items-center rounded-lg border border-white/10 bg-[#12233a] focus-within:border-emerald-300">
-              <input
-                value={rollingThirtyDayExchangeUsedHuf}
-                onChange={(event) => {
-                  setRollingThirtyDayExchangeUsedHuf(event.target.value);
-                  setRevolutUsageError("");
-                }}
-                inputMode="decimal"
-                className="min-w-0 flex-1 bg-transparent px-3 outline-none"
-                aria-invalid={revolutUsageError !== ""}
-                aria-describedby="revolut-usage-help revolut-usage-error"
-              />
-              <span className="pr-3 font-mono text-sm text-slate-400">HUF</span>
-            </div>
-          </label>
-          <p id="revolut-usage-help" className="text-xs leading-5 text-slate-400 sm:col-span-2">
-            A Revolut Standard és Plus kerete a gördülő 30 nap jogosult átváltási forgalmára
-            vonatkozik. NeoRate nem ismeri a fiókod tényleges használatát, ezért ezt neked kell
-            megadnod.
-          </p>
-          <p
-            id="revolut-usage-error"
-            className="text-xs text-rose-300 sm:col-span-2"
-            role="status"
-            aria-live="polite"
-          >
-            {revolutUsageError}
+          <p className="text-xs leading-5 text-slate-400">
+            A nyilvános konverter nem ismeri a fiókod elmúlt 30 napi kerethasználatát. Az API által
+            a kiválasztott csomaghoz visszaadott díjat mutatjuk egyszer, teljes rendelkezésre álló
+            keretet feltételezve; a személyes végleges ajánlatot ellenőrizd az appban.
           </p>
         </div>
 
@@ -367,26 +323,36 @@ export function ComparisonTool() {
                       {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
                         <span className="grid gap-1 text-xs">
                           <span>
-                            Keretdíj:{" "}
+                            FX díj:{" "}
                             {formatMoney(
-                              result.providerDetails.fairUsageFee.amount,
+                              result.providerDetails.fxFee.amount,
                               result.providerDetails.feeCurrency,
                             )}
                           </span>
                           <span>
-                            Hétvégi:{" "}
-                            {formatMoney(
-                              result.providerDetails.weekendFee.amount,
-                              result.providerDetails.feeCurrency,
-                            )}
-                          </span>
-                          <strong className="text-slate-200">
-                            Összesen:{" "}
+                            Összes díj:{" "}
                             {formatMoney(
                               result.providerDetails.totalFee.amount,
                               result.providerDetails.feeCurrency,
                             )}
+                          </span>
+                          <strong className="text-slate-200">
+                            Teljes forrásoldali költség:{" "}
+                            {formatMoney(
+                              result.providerDetails.totalSourceCost.amount,
+                              result.providerDetails.feeCurrency,
+                            )}
                           </strong>
+                          {result.providerDetails.fxTooltip ? (
+                            <span className="max-w-xs text-slate-400">
+                              {result.providerDetails.fxTooltip}
+                            </span>
+                          ) : null}
+                          {result.providerDetails.planTooltipLong ? (
+                            <span className="max-w-xs text-slate-400">
+                              {result.providerDetails.planTooltipLong}
+                            </span>
+                          ) : null}
                         </span>
                       ) : (
                         formatMoney(result.explicitFee.amount, result.explicitFee.currency)
@@ -427,10 +393,9 @@ export function ComparisonTool() {
         ) : null}
         {data?.warnings.includes("REVOLUT_INDICATIVE") ? (
           <>
-            <strong className="text-amber-100">Revolut:</strong> a nyilvános oldali ráta
-            LIVE_UNOFFICIAL besorolású és indikatív. A végrehajtható árfolyamot, a díjakat és az
-            esetleges magyar migrációhoz kötött speciális díjat mindig ellenőrizd a Revolut
-            appban.{" "}
+            <strong className="text-amber-100">Revolut:</strong> a nyilvános JSON-konverter ajánlata
+            LIVE_UNOFFICIAL besorolású és indikatív. Nem ismeri a fiókod tényleges kerethasználatát;
+            a végrehajtható árfolyamot és díjakat mindig ellenőrizd a Revolut appban.{" "}
           </>
         ) : null}
         {view.status === "loading" ? "A quote API válaszára várunk." : null}

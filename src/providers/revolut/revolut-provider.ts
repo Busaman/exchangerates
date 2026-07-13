@@ -4,39 +4,37 @@ import {
   type Provider,
   type QuoteRequest,
 } from "@/domain/quote";
+import { decimal, decimalToPlainString } from "@/domain/decimal";
 import type { ProviderAdapter, ProviderAdapterContext } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
-import { revolutPairKey, revolutSourceUrls } from "@/providers/revolut/revolut-config";
-import { calculateRevolutPersonalQuote } from "@/providers/revolut/revolut-fees";
+import { buildRevolutQuoteUrl, revolutPairKey } from "@/providers/revolut/revolut-config";
 import {
-  RevolutPublicPageRateSource,
-  type RevolutRateSource,
-} from "@/providers/revolut/revolut-rate-source";
+  RevolutPublicQuoteClient,
+  type RevolutQuoteClient,
+} from "@/providers/revolut/revolut-quote-client";
 
 export const revolutProvider: Provider = { id: "REVOLUT", name: "Revolut Personal (HU)" };
 export const revolutIndicativeWarning =
-  "Indicative public-page rate. Confirm the executable rate and every applicable fee in the Revolut app before exchanging.";
+  "Indicative public-converter quote. The endpoint cannot know prior rolling 30-day account usage and NeoRate assumes the full plan allowance remains. Confirm the executable rate and every fee in the Revolut app before exchanging.";
 
 export type RevolutProviderAdapterDependencies = Readonly<{
-  rateSource?: RevolutRateSource;
-  now?: () => Date;
+  quoteClient?: RevolutQuoteClient;
 }>;
 
 export class RevolutProviderAdapter implements ProviderAdapter {
   readonly provider = revolutProvider;
-  readonly #rateSource: RevolutRateSource;
-  readonly #now: () => Date;
+  readonly #quoteClient: RevolutQuoteClient;
 
   constructor(dependencies: RevolutProviderAdapterDependencies = {}) {
-    this.#rateSource = dependencies.rateSource ?? new RevolutPublicPageRateSource();
-    this.#now = dependencies.now ?? (() => new Date());
+    this.#quoteClient = dependencies.quoteClient ?? new RevolutPublicQuoteClient();
   }
 
   async getQuote(requestInput: QuoteRequest, context?: ProviderAdapterContext) {
     const request = quoteRequestSchema.parse(requestInput);
     const pair = revolutPairKey(request.sourceCurrency, request.targetCurrency);
     const personalContext = request.providerContexts?.REVOLUT;
-    const sourceUrl = pair === undefined ? undefined : revolutSourceUrls[pair];
+    const sourceUrl =
+      pair === undefined ? undefined : buildRevolutQuoteUrl(pair, request.sourceAmount);
 
     if (pair === undefined) {
       return createProviderUnavailableResult({
@@ -51,35 +49,32 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         provider: this.provider,
         request,
         reason:
-          "Revolut Personal requires an explicit plan and rolling 30-day HUF exchange usage to calculate fees.",
-        sourceId: `revolut-public-page-${pair.toLowerCase()}`,
+          "Revolut Personal requires an explicit personal plan to select the endpoint fee quote.",
+        sourceId: "revolut-public-json-quote",
         sourceUrl,
       });
     }
 
     let observation;
     try {
-      observation = await this.#rateSource.getRate(pair, context?.signal);
+      observation = await this.#quoteClient.getQuote(
+        { pair, sourceAmount: request.sourceAmount, plan: personalContext.plan },
+        context?.signal,
+      );
     } catch {
       return createProviderUnavailableResult({
         provider: this.provider,
         request,
         reason:
-          "The official Revolut public page could not be fetched or validated. No fallback rate was substituted.",
-        sourceId: `revolut-public-page-${pair.toLowerCase()}`,
+          "The official Revolut public quote endpoint could not be fetched or validated. No fallback rate was substituted.",
+        sourceId: "revolut-public-json-quote",
         sourceUrl,
       });
     }
 
-    const calculation = calculateRevolutPersonalQuote({
-      sourceCurrency: request.sourceCurrency,
-      targetCurrency: request.targetCurrency,
-      sourceAmount: request.sourceAmount,
-      displayedBaseRate: observation.rate,
-      personalContext,
-      at: this.#now(),
-    });
-    const fee = (amount: string) => ({ currency: calculation.feeCurrency, amount });
+    const effectiveRate = decimalToPlainString(
+      decimal(observation.targetAmount).dividedBy(request.sourceAmount),
+    );
 
     return availableQuoteSchema.parse({
       kind: "quote",
@@ -90,34 +85,32 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       },
       direction: "SELL_SOURCE_BUY_TARGET",
       sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
-      targetAmount: { currency: request.targetCurrency, amount: calculation.targetAmount },
-      effectiveRate: calculation.effectiveRate,
-      explicitFee: fee(calculation.totalFee),
-      totalCost: fee(calculation.totalFee),
+      targetAmount: { currency: request.targetCurrency, amount: observation.targetAmount },
+      effectiveRate,
+      explicitFee: observation.totalFee,
+      totalCost: observation.totalFee,
       rateTimestamp: observation.rateTimestamp,
       retrievedAt: observation.retrievedAt,
       sourceType: "LIVE_UNOFFICIAL",
       status: observation.freshness === "STALE" ? "STALE" : "AVAILABLE",
       freshness: observation.freshness,
       reliability: "MEDIUM",
-      sourceId: `revolut-public-page-${pair.toLowerCase()}`,
+      sourceId: "revolut-public-json-quote",
       sourceUrl: observation.sourceUrl,
       customerPlan: personalContext.plan,
       disclaimer: revolutIndicativeWarning,
       providerDetails: {
         type: "REVOLUT_PERSONAL",
-        plan: calculation.plan,
-        displayedBaseRate: calculation.displayedBaseRate,
-        fairUsageFee: fee(calculation.fairUsageFee),
-        weekendFee: fee(calculation.weekendFee),
-        totalFee: fee(calculation.totalFee),
-        feeCurrency: calculation.feeCurrency,
-        fairUsageAllowanceHuf: calculation.fairUsageAllowanceHuf,
-        rollingThirtyDayExchangeUsedBeforeQuoteHuf:
-          calculation.rollingThirtyDayExchangeUsedBeforeQuoteHuf,
-        allowanceConsumedByQuoteHuf: calculation.allowanceConsumedByQuoteHuf,
-        remainingAllowanceAfterQuoteHuf: calculation.remainingAllowanceAfterQuoteHuf,
-        marketSession: calculation.marketSession,
+        plan: observation.plan,
+        displayedBaseRate: observation.rate,
+        fxFee: observation.fxFee,
+        totalFee: observation.totalFee,
+        feeCurrency: observation.totalFee.currency,
+        totalSourceCost: observation.totalSourceCost,
+        fxTooltip: observation.fxTooltip,
+        planTooltipLong: observation.planTooltipLong,
+        planTooltipShort: observation.planTooltipShort,
+        allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
         indicativeWarning: revolutIndicativeWarning,
       },
     });

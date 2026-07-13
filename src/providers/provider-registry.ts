@@ -77,7 +77,7 @@ export function createProviderRegistry({
           adapter: revolutAdapter,
           status: "UNAVAILABLE",
           reason:
-            "The experimental Revolut integration is disabled pending staging and legal verification.",
+            "The experimental Revolut JSON integration is disabled pending staging request-contract and legal verification.",
           sourceId: "revolut-personal-experimental-disabled",
         },
   ]);

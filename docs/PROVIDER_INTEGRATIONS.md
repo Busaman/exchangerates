@@ -43,55 +43,64 @@ Keep a new adapter disabled until its source, tests and user-facing labeling hav
 
 ## Revolut Hungary personal adapter
 
-Scope is personal customers only: `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA`, with explicit
-plan and `rollingThirtyDayExchangeUsedHuf` context. Revolut Business, Pro, merchant/corporate products,
-authenticated accounts, private endpoints and reciprocal inference are prohibited.
+Scope is personal customers only: `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA`, with an
+explicit selected plan. Revolut Business, Pro, merchant/corporate products, authenticated accounts,
+private app endpoints and reciprocal inference are prohibited.
 
-Approved rate pages:
+Approved public website endpoint:
 
-- `https://www.revolut.com/hu-HU/currency-converter/convert-eur-to-huf-exchange-rate/`
-- `https://www.revolut.com/hu-HU/currency-converter/convert-huf-to-eur-exchange-rate/`
+- `GET https://www.revolut.com/api/exchange/quote`
+- required query: `amount`, `country=HU`, `fromCurrency`, `isRecipientAmount=false`, `toCurrency`
+- request headers: `Accept: application/json` and the non-deceptive NeoRate User-Agent only
+- explicitly forbidden: cookies, authorization, browser/user identifiers, copied Cloudflare data,
+  Sentry/analytics headers, HTML parsing and browser automation
 
 Fee policy sources:
 
 - `https://help.revolut.com/hu-HU/help/wealth/exchanging-money/how-much-does-it-cost-to-make-an-exchange/will-i-be-charged-for-exchanging-foreign-currencies/`
 - `https://www.revolut.com/hu-HU/legal/standard-fees/`
 
-There is no documented public personal Revolut quote API. The official page is not a documented
-machine contract, so parsed rates are `LIVE_UNOFFICIAL`, medium-reliability and explicitly
-indicative. Preserve exact URL, page timestamp and retrieval timestamp. The runtime uses plain HTTP
-only; if Revolut returns a challenge/access page, parsing fails and no fallback is allowed. Current
-manual evidence showed browser-accessible `__NEXT_DATA__` with independent `from`, `to`, `rate`,
-`timestamp`, `senderAmount`, and `recipientAmount`, while generic and browser-header server requests
-returned HTTP 403 security/access pages. This fragility is expected and must be monitored.
+There is no documented public personal Revolut API. Although this JSON endpoint is publicly
+accessible and used by Revolut's official converter, it is not a supported external contract; valid
+results are `LIVE_UNOFFICIAL`, medium-reliability and explicitly indicative. Preserve the exact query
+URL, endpoint timestamp and retrieval timestamp. Non-JSON content, redirect/challenge responses,
+invalid fields or access failure become unavailable and no fallback is allowed.
 
-Parser fixtures under `src/providers/revolut/fixtures` are sanitized minimal HTML documents, not
-full-page captures. Tests never call Revolut. The rate source uses a NeoRate-identifying User-Agent,
-2.5-second per-attempt timeout, two bounded retries, 60-second fresh cache, 30-second negative cache,
-per-direction single-flight and a 15-minute stale ceiling. Negative results suppress retry storms but
-do not renew timestamps or stale age. Only a last successful observation can become `STALE`; it is never ranked. Wrong direction, challenge content,
-missing/invalid structured data, stale/future timestamp, internally inconsistent amounts and
-configured implausible rates all become unavailable with no substituted value.
+Returned sender amount and currency direction must match exactly. The only numerical tolerance is a
+configurable 0.5% relative check between raw rate and actual recipient/sender, allowing for the
+endpoint's displayed recipient precision; normalization never changes the endpoint values. Fee
+currency and total source-side cost checks are exact decimal identities.
 
-Fee order is:
+Fixtures under `src/providers/revolut/fixtures` are sanitized JSON contract examples. Unit tests
+never call Revolut. The optional `pnpm test:revolut:live` script runs only with
+`REVOLUT_LIVE_TEST_ENABLED=true` and prints sanitized summaries. The client uses a 2.5-second
+per-attempt timeout, two bounded retries, 60-second fresh cache, 30-second negative cache,
+amount/direction/plan-specific single-flight and a 15-minute stale ceiling. Negative results suppress
+retry storms but do not renew timestamps or stale age. Only a last successful observation for the
+same material request can become `STALE`; it is never ranked.
 
-1. Calculate quote allowance consumption in HUF (HUF source directly; EUR source times the current
-   directional page rate solely for allowance accounting).
-2. Calculate fair-usage fee in source currency only on the part above the remaining rolling-30-day
-   allowance documented by Revolut.
-3. Calculate the 1% weekend fee independently on the full source amount during Friday 17:00 through
-   Sunday 18:00 `America/New_York` (`[Friday 17:00, Sunday 18:00)`, DST-aware).
-4. Add `fairUsageFee + weekendFee`, subtract once from source, multiply by the directional base rate,
-   then round final target payout down to target scale. Do not round intermediate decimals.
+For a successful quote, select exactly the requested plan and validate `fees.fx`, `fees.total`, and
+`fees.cost`. Their currencies must equal the source currency, total fee cannot be below FX fee, and
+total source-side cost must equal sender amount plus total fee. Use the endpoint's actual recipient
+amount; derive effective rate with decimal.js. Do not manually add fair-usage/weekend fees or apply a
+second payout calculation.
 
-The result exposes both fee components, total, fee currency, plan, allowance before/consumed/after,
-market session, base/effective rates and indicative warning. Revolut's legal page separately notes a
+The endpoint has no authenticated account or prior-usage input and therefore cannot know actual
+rolling-30-day allowance usage. NeoRate has removed the old usage field rather than claim false
+account-specific accuracy or double-charge endpoint fees. Results state `FULL_ALLOWANCE_ASSUMED` and
+must be checked in-app. Sanitized fixtures cover zero and non-zero per-plan fee objects, but the
+2026-07-13 live probe returned HTTP 400 (`Required 'localeCode' is missing`) for the required
+no-cookie request. Below/above-allowance and weekday/weekend behavior are not live-verified until the
+exact non-speculative request contract is confirmed in staging.
+
+The result exposes selected plan, raw/effective rates, FX and total fee, fee currency, total
+source-side cost, tooltips, source/retrieval timestamps and an indicative warning. Revolut's legal page separately notes a
 conditional Hungarian migration-linked special transaction fee. Because public request context
 cannot establish its activation for a customer, NeoRate does not calculate it and requires final
 verification in the Revolut app.
 
 The registration is disabled by default. Without `REVOLUT_ADAPTER_ENABLED=true`, an explicit
-Revolut selection returns a numeric-field-free unavailable result and makes no page request. Enable
-the flag only in controlled staging until server-side access, parser success and legal/product
+Revolut selection returns a numeric-field-free unavailable result and makes no endpoint request. Enable
+the flag only in controlled staging until server-side access, schema success and legal/product
 approval satisfy the approval gate. The registry's 10-second Revolut deadline does not change the
 2-second service default used by other providers.

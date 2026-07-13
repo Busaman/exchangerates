@@ -36,11 +36,9 @@ export function runProviderAdapterContract({
           ...(result.providerDetails?.type === "REVOLUT_PERSONAL"
             ? [
                 result.providerDetails.displayedBaseRate,
-                result.providerDetails.fairUsageFee.amount,
-                result.providerDetails.weekendFee.amount,
+                result.providerDetails.fxFee.amount,
                 result.providerDetails.totalFee.amount,
-                result.providerDetails.rollingThirtyDayExchangeUsedBeforeQuoteHuf,
-                result.providerDetails.allowanceConsumedByQuoteHuf,
+                result.providerDetails.totalSourceCost.amount,
               ]
             : []),
         ]) {

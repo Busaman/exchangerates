@@ -1,0 +1,66 @@
+{
+  "sender": { "amount": 100000, "currency": "HUF" },
+  "recipient": { "amount": 277.43, "currency": "EUR" },
+  "rate": {
+    "from": "HUF",
+    "to": "EUR",
+    "rate": 0.0027743132467174,
+    "timestamp": 1783958571976
+  },
+  "fxTooltip": "A Revolut nem számít fel díjat",
+  "plans": [
+    {
+      "id": "STANDARD",
+      "name": "Standard",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 100000, "currency": "HUF" }
+      },
+      "tooltipLong": "A Revolut nem számít fel díjat",
+      "tooltipShort": "Díjmentes"
+    },
+    {
+      "id": "PLUS",
+      "name": "Plus",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 100000, "currency": "HUF" }
+      },
+      "tooltipLong": "A Revolut nem számít fel díjat",
+      "tooltipShort": "Díjmentes"
+    },
+    {
+      "id": "PREMIUM",
+      "name": "Premium",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 100000, "currency": "HUF" }
+      },
+      "tooltipShort": "Díjmentes"
+    },
+    {
+      "id": "METAL",
+      "name": "Metal",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 100000, "currency": "HUF" }
+      },
+      "tooltipShort": "Díjmentes"
+    },
+    {
+      "id": "ULTRA",
+      "name": "Ultra",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 100000, "currency": "HUF" }
+      },
+      "tooltipShort": "Díjmentes"
+    }
+  ],
+  "ignoredFutureField": { "version": 2 }
+}

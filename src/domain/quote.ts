@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  decimal,
-  decimalPattern,
-  maximumSourceAmount,
-  maximumSourceAmountLength,
-} from "@/domain/decimal";
+import { decimalPattern } from "@/domain/decimal";
 
 export const providerIdentifierSchema = z.enum([
   "MOCK_PROVIDER",
@@ -41,14 +36,6 @@ export const revolutPersonalPlanSchema = z.enum(["STANDARD", "PLUS", "PREMIUM", 
 export const revolutPersonalContextSchema = z
   .object({
     plan: revolutPersonalPlanSchema,
-    rollingThirtyDayExchangeUsedHuf: z
-      .string()
-      .max(maximumSourceAmountLength)
-      .pipe(decimalStringSchema)
-      .refine(
-        (value) => decimal(value).lessThanOrEqualTo(maximumSourceAmount),
-        `Rolling 30-day exchange usage must not exceed ${maximumSourceAmount} HUF`,
-      ),
   })
   .strict();
 
@@ -121,15 +108,14 @@ export const availableQuoteSchema = z.object({
       type: z.literal("REVOLUT_PERSONAL"),
       plan: revolutPersonalPlanSchema,
       displayedBaseRate: positiveDecimalStringSchema,
-      fairUsageFee: monetaryAmountSchema,
-      weekendFee: monetaryAmountSchema,
+      fxFee: monetaryAmountSchema,
       totalFee: monetaryAmountSchema,
       feeCurrency: currencyCodeSchema,
-      fairUsageAllowanceHuf: decimalStringSchema.nullable(),
-      rollingThirtyDayExchangeUsedBeforeQuoteHuf: decimalStringSchema,
-      allowanceConsumedByQuoteHuf: decimalStringSchema,
-      remainingAllowanceAfterQuoteHuf: decimalStringSchema.nullable(),
-      marketSession: z.enum(["WEEKDAY", "WEEKEND"]),
+      totalSourceCost: monetaryAmountSchema,
+      fxTooltip: z.string().min(1).optional(),
+      planTooltipLong: z.string().min(1).optional(),
+      planTooltipShort: z.string().min(1).optional(),
+      allowanceAssumption: z.literal("FULL_ALLOWANCE_ASSUMED"),
       indicativeWarning: z.string().min(1),
     })
     .strict()

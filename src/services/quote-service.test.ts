@@ -7,8 +7,6 @@ import {
   ProviderAdapterRegistry,
   providerRegistry,
 } from "@/providers/provider-registry";
-import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
-import type { RevolutRateSource } from "@/providers/revolut/revolut-rate-source";
 import { getQuotes } from "@/services/quote-service";
 
 const generatedAt = "2026-01-01T12:00:00.000Z";
@@ -453,52 +451,6 @@ describe("getQuotes", () => {
     expect(response.issues.every((issue) => issue.kind === "error")).toBe(true);
     consoleError.mockRestore();
     vi.useRealTimers();
-  });
-
-  it("classifies a Revolut calculation failure as FAILED rather than source-unavailable", async () => {
-    const source: RevolutRateSource = {
-      getRate: vi.fn(async () => ({
-        pair: "EUR-HUF" as const,
-        rate: "1",
-        rateTimestamp: generatedAt,
-        retrievedAt: generatedAt,
-        sourceSenderAmount: "1",
-        sourceRecipientAmount: "1",
-        sourceUrl:
-          "https://www.revolut.com/hu-HU/currency-converter/convert-eur-to-huf-exchange-rate/",
-        freshness: "FRESH" as const,
-      })),
-    };
-    const registry = new ProviderAdapterRegistry([
-      {
-        status: "SUPPORTED",
-        adapter: new RevolutProviderAdapter({
-          rateSource: source,
-          now: () => new Date(generatedAt),
-        }),
-      },
-    ]);
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    const response = await getQuotes(
-      {
-        sourceCurrency: "EUR",
-        targetCurrency: "HUF",
-        sourceAmount: "0.01",
-        providers: ["REVOLUT"],
-        providerContexts: {
-          REVOLUT: { plan: "ULTRA", rollingThirtyDayExchangeUsedHuf: "0" },
-        },
-      },
-      { ...deterministicDependencies, registry },
-    );
-
-    expect(response.issues[0]).toMatchObject({
-      kind: "error",
-      status: "FAILED",
-    });
-    expect(response.issues[0]).not.toHaveProperty("targetAmount");
-    consoleError.mockRestore();
   });
 
   it("never ranks a stale quote as best", async () => {

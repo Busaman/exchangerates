@@ -13,9 +13,10 @@ adapter contract suite, registry, timeout isolation and regression tests are com
 ## 3. Official or legally reliable provider integrations — in progress
 
 The first adapter is implemented but disabled by default for Hungarian personal Revolut EUR/HUF and
-HUF/EUR using only the official public converter pages, strict parsing, explicit `LIVE_UNOFFICIAL`
-labeling and no fallback. The validated environment gate, per-provider timeout, negative cache and
-single-flight control are complete. It remains operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
+HUF/EUR using the public JSON endpoint used by Revolut's official converter, strict validation,
+explicit `LIVE_UNOFFICIAL` labeling and no fallback. The validated environment gate, per-provider
+timeout, amount/plan-aware cache, negative cache and single-flight control are complete. It remains
+operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
 after source/legal review. Investigate Gránit Bank only if a reliable legal source is identified.
 
 ## 4. Historical rate storage — planned
@@ -43,7 +44,9 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in a controlled Vercel staging environment and
-verify plain-HTTP page access, parser success rate, latency, challenge frequency, negative/fresh/stale
-cache transitions and fee output in both directions. Obtain legal/product approval for continued
-public-page parsing before enabling production data; add telemetry without adding a fallback.**
+**Resolve and document the public endpoint's current no-cookie `localeCode` request requirement,
+then deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging. Verify both
+directions, all five plans, below/above-allowance amounts, weekday/weekend behavior, latency,
+rate-limit/error rates, cache transitions and response-contract stability. Obtain legal/product
+approval for the undocumented JSON endpoint before production enablement; add telemetry without a
+fallback.**
