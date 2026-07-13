@@ -18,7 +18,7 @@ export const currencyFractionDigits = {
 
 export const minimumSourceAmount = {
   EUR: "0.01",
-  HUF: "10",
+  HUF: "100",
 } as const;
 
 export type SupportedCurrency = keyof typeof currencyFractionDigits;

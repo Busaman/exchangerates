@@ -85,7 +85,7 @@ include provenance/status timestamps. `LIVE_OFFICIAL` means documented provider-
 source type plus a stale status.
 
 `POST /api/v1/quotes` validates a strict request, including a 30-character amount limit and
-currency-specific minimums of 0.01 EUR and 10 HUF, resolves selected adapters through the registry,
+currency-specific minimums of 0.01 EUR and 100 HUF, resolves selected adapters through the registry,
 calls them in parallel with per-provider abort/timeout support, validates normalized results, ranks
 only fresh `AVAILABLE` quotes with positive payouts, and validates the response before returning it. A valid request always
 gets a `200` domain response even when all providers are unavailable/failed; malformed requests get

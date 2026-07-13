@@ -40,7 +40,7 @@ the environment template with `Copy-Item .env.example .env`.
 `POST /api/v1/quotes` is the versioned server-side comparison boundary. Monetary values are plain
 decimal strings. Requests reject unknown fields, unsupported currencies/providers, duplicate
 providers, equal currencies, malformed/non-positive amounts, amount strings longer than 30
-characters, values below the source-currency minimum (0.01 EUR or 10 HUF), and amounts above
+characters, values below the source-currency minimum (0.01 EUR or 100 HUF), and amounts above
 `1000000000000`. Omitting `providers` compares every adapter registered on the server.
 
 ```json

@@ -81,7 +81,7 @@ provider adapter must reproduce and test the provider's documented fee, rate and
 direction. Until verified, an adapter must return unavailable rather than apply the mock policy.
 
 The public quote API limits source amounts to 30 characters and applies product minimums of 0.01 EUR
-and 10 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
+and 100 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
 payout as the best available quote. Normalized `AVAILABLE` quotes independently require positive
 source amounts, target amounts and effective rates as defense in depth.
 

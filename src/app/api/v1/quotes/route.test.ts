@@ -73,13 +73,29 @@ describe("POST /api/v1/quotes", () => {
         ...validRequest,
         sourceCurrency: "HUF",
         targetCurrency: "EUR",
-        sourceAmount: "1",
+        sourceAmount: "99",
       }),
     );
     const payload = quoteApiErrorResponseSchema.parse(await response.json());
 
     expect(response.status).toBe(400);
-    expect(payload.error.fields?.sourceAmount).toContain("Source amount must be at least 10 HUF");
+    expect(payload.error.fields?.sourceAmount).toContain("Source amount must be at least 100 HUF");
+  });
+
+  it("accepts the exact HUF source minimum with a positive payout", async () => {
+    const response = await POST(
+      postJson({
+        ...validRequest,
+        sourceCurrency: "HUF",
+        targetCurrency: "EUR",
+        sourceAmount: "100",
+        providers: ["MOCK_PROVIDER"],
+      }),
+    );
+    const payload = quoteApiResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(payload.quotes[0]?.targetAmount.amount).toBe("0.25");
   });
 
   it("rejects an over-length decimal amount", async () => {
