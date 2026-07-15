@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { decimal, decimalToPlainString, isWithinCurrencyMinorUnit } from "@/domain/decimal";
+import {
+  currencyFractionDigits,
+  decimal,
+  decimalToPlainString,
+  isWithinCurrencyMinorUnit,
+  roundDownDecimal,
+} from "@/domain/decimal";
 import {
   revolutPersonalPlanSchema,
   supportedCurrencyCodeSchema,
@@ -65,6 +71,8 @@ export type RevolutQuoteObservation = Readonly<{
   pair: RevolutPairKey;
   sourceAmount: string;
   targetAmount: string;
+  endpointRecipientAmount: string;
+  targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN";
   rate: string;
   rateTimestamp: string;
   retrievedAt: string;
@@ -166,7 +174,7 @@ export function parseRevolutQuoteResponse({
   const requestedAmount = decimal(request.sourceAmount);
   const senderAmount = decimal(plainDecimal(response.sender.amount, "INVALID_SENDER_AMOUNT", true));
   const recipientAmount = decimal(
-    plainDecimal(response.recipient.amount, "INVALID_RECIPIENT_AMOUNT", true),
+    plainDecimal(response.recipient.amount, "INVALID_RECIPIENT_AMOUNT", false),
   );
   const rate = decimal(plainDecimal(response.rate.rate, "INVALID_RATE", true));
   if (!senderAmount.equals(requestedAmount)) throw publicError("SENDER_AMOUNT_MISMATCH");
@@ -175,11 +183,19 @@ export function parseRevolutQuoteResponse({
   if (rate.lessThan(bounds.minimum) || rate.greaterThan(bounds.maximum)) {
     throw publicError("IMPLAUSIBLE_RATE");
   }
-  const derivedRate = recipientAmount.dividedBy(senderAmount);
-  const relativeDifference = derivedRate.minus(rate).abs().dividedBy(rate);
-  if (relativeDifference.greaterThan(revolutQuoteClientConfig.consistencyTolerance)) {
+  const unroundedTargetAmount = senderAmount.times(rate);
+  const recipientDifference = recipientAmount.minus(unroundedTargetAmount).abs();
+  if (
+    recipientDifference.greaterThan(
+      revolutQuoteClientConfig.maximumRecipientDisplayRoundingDifference[request.pair],
+    )
+  ) {
     throw publicError("INCONSISTENT_SENDER_RECIPIENT_RATE");
   }
+  const targetAmount = decimal(
+    roundDownDecimal(unroundedTargetAmount, currencyFractionDigits[expected.targetCurrency]),
+  );
+  if (!targetAmount.greaterThan(0)) throw publicError("INVALID_NORMALIZED_TARGET_AMOUNT");
 
   const selectedPlan = selectPlan(response.plans, request.plan);
   const fxFee = decimal(plainDecimal(selectedPlan.fees.fx.amount, "INVALID_FX_FEE", false));
@@ -221,7 +237,9 @@ export function parseRevolutQuoteResponse({
   return {
     pair: request.pair,
     sourceAmount: decimalToPlainString(senderAmount),
-    targetAmount: decimalToPlainString(recipientAmount),
+    targetAmount: decimalToPlainString(targetAmount),
+    endpointRecipientAmount: decimalToPlainString(recipientAmount),
+    targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
     rate: decimalToPlainString(rate),
     rateTimestamp: rateDate.toISOString(),
     retrievedAt: retrievedAt.toISOString(),

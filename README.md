@@ -1,7 +1,7 @@
 # NeoRate
 
 NeoRate compares the amount a customer would actually receive when exchanging money through
-neobanks, fintech providers and selected banks, after known provider margins and fees. The first
+neobanks, fintech providers and selected banks, using fees returned by the selected provider source. The first
 supported directions are EUR/HUF and HUF/EUR; the domain and adapter boundaries are designed for
 more currencies and providers.
 
@@ -140,8 +140,10 @@ remove valid results from other providers.
 A successful Revolut result has provider id `REVOLUT`, source type `LIVE_UNOFFICIAL`, the exact
 converter `sourceUrl`, source and retrieval timestamps, and `providerDetails.type` set to
 `REVOLUT_PERSONAL`. Details include the displayed directional base rate, personal plan,
-`fxFee`, `totalFee`, fee currency, total source-side cost, the endpoint and selected-plan tooltip
-text, and `allowanceAssumption: FULL_ALLOWANCE_ASSUMED`. Responses also include
+`fxFee`, `totalFee`, `feePercentage`, fee currency, total source-side cost, the endpoint and selected-plan tooltip
+text, the original endpoint recipient display, `targetAmountCalculation: RAW_RATE_ROUNDED_DOWN`,
+and `allowanceAssumption: FULL_ALLOWANCE_ASSUMED`. For HUF→EUR the UI also shows the same-direction
+HUF cost per 1 EUR so it is not confused with the independent EUR→HUF payout rate. Responses include
 `REVOLUT_INDICATIVE`; the final quote must be checked in-app.
 
 Every successful quote also exposes `rankingEffectiveRate`. It equals `targetAmount /
@@ -150,6 +152,15 @@ providerDetails.totalSourceCost` when a valid source-currency total cost exists,
 ties use ascending provider ID. Malformed provider-supplied cost data fails closed instead of using
 the fallback silently. A winning `FULL_ALLOWANCE_ASSUMED` Revolut quote is labeled as an indicative
 best-case result, not an exact executable best quote.
+
+Revolut fee completeness also controls ranking eligibility. On weekdays, Standard/Plus results over
+their documented zero-usage HUF allowance remain visible with their source-returned values but have
+`rankingStatus: EXCLUDED_INCOMPLETE_FEES`, cannot become `bestProviderId`, and display the missing
+fair-usage-fee warning. The allowance is only a ranking guard; NeoRate does not calculate or insert a
+replacement Revolut fee. Premium/Metal/Ultra have no weekday fair-usage exclusion. All plans are
+excluded from ranking during Friday 17:00 ET through Sunday 18:00 ET until endpoint weekend-fee
+coverage is verified. The interval uses `America/New_York`, including DST transitions. When all
+visible quotes are excluded or stale, the API returns `NO_RANKABLE_QUOTES`.
 
 The server fetches only:
 
@@ -170,10 +181,18 @@ The deterministic mock rounds fees and target amounts with `ROUND_HALF_UP` to th
 target conversion. This is not a universal provider policy: future real adapters must implement and
 test the provider's documented rounding direction. See `DECISIONS.md` for the authoritative policy.
 
-The Revolut adapter preserves the endpoint's rate and actual sender/recipient amounts. It calculates
-the effective rate with decimal.js from those returned amounts and normalizes the selected plan's
-`fees.fx`, `fees.total`, and `fees.cost` without reconstructing or rounding the payout. It never
-duplicates the endpoint fee with a manually calculated allowance or weekend fee.
+The Revolut adapter preserves the endpoint sender, raw directional rate, original recipient display,
+and selected plan's `fees.fx`, `fees.total`, and `fees.cost`. The endpoint may truncate HUF→EUR
+recipient displays to whole EUR, so NeoRate validates that display within one target unit, calculates
+the indicative payout as `sourceAmount × rawRate`, and rounds down to the target-currency scale. It
+never duplicates the endpoint fee with a manually calculated allowance or weekend fee. The two
+directions remain independent: an EUR→HUF payout rate is not the reciprocal executable price of
+buying EUR with HUF.
+
+For a source-driven Revolut quote, `feePercentage = totalFee / senderAmount × 100`. The calculation
+uses decimal.js and the API keeps the unrounded decimal string. Fee amounts are rendered from their
+original decimal strings, and percentage presentation uses enough precision that a positive small
+fee does not appear as zero.
 
 ## Environment variables
 
@@ -231,6 +250,12 @@ unavailable unless the endpoint actually returns their exact plan objects. The a
 public converter's full-allowance plan quote and does not know actual rolling-30-day usage, does not
 model the separately documented conditional Hungarian migration transaction fee, and cannot promise
 the app's executable rounding or total. Persistence is not yet connected to the quote request path.
+On 2026-07-15 the official converter UI began showing a small, rate-dependent Standard fee at 972 EUR
+in one observation, while exact no-cookie JSON requests for 968–974 EUR returned zero fee for every
+amount. NeoRate does not hard-code that moving threshold or invent the missing fee; it shows the
+endpoint result as an explicitly best-case `FULL_ALLOWANCE_ASSUMED` quote, applies the documented
+fee-completeness ranking gate described above, and requires app
+verification.
 
 ## Project context
 

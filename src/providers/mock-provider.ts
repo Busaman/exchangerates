@@ -58,6 +58,7 @@ export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
     targetAmount: { currency: request.targetCurrency, amount: targetAmount },
     effectiveRate,
     rankingEffectiveRate,
+    rankingStatus: "ELIGIBLE",
     explicitFee: { currency: request.sourceCurrency, amount: fee },
     totalCost: { currency: request.sourceCurrency, amount: fee },
     rateTimestamp: request.requestedAt,

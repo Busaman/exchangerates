@@ -66,10 +66,13 @@ results are `LIVE_UNOFFICIAL`, medium-reliability and explicitly indicative. Pre
 URL, endpoint timestamp and retrieval timestamp. Non-JSON content, redirect/challenge responses,
 invalid fields or access failure become unavailable and no fallback is allowed.
 
-Returned sender amount and currency direction must match exactly. The only numerical tolerance is a
-configurable 0.5% relative check between raw rate and actual recipient/sender, allowing for the
-endpoint's displayed recipient precision; normalization never changes the endpoint values. Fee
-currency checks are exact; source-cost arithmetic uses only the minor-unit tolerance below.
+Returned sender amount and currency direction must match exactly. Current live HUF→EUR responses may
+truncate `recipient.amount` to whole EUR, including zero for a positive small quote. Treat that field
+as a display consistency signal: it must be within one target display unit of `sender × rawRate`.
+Normalize the indicative target with decimal.js as `sender × rawRate`, rounded down to the target
+currency scale, and preserve both the original endpoint recipient and
+`targetAmountCalculation: RAW_RATE_ROUNDED_DOWN`. Fee currency checks remain exact; source-cost
+arithmetic uses only the minor-unit tolerance below.
 
 Because endpoint monetary values use display precision, `fees.cost` may differ from
 `sender.amount + fees.total` by at most one source-currency minor unit: 1 HUF or 0.01 EUR. The
@@ -83,15 +86,26 @@ amount/direction/plan-specific single-flight and a 15-minute stale ceiling. Nega
 retry storms but do not renew timestamps or stale age. Only a last successful observation for the
 same material request can become `STALE`; it is never ranked.
 
+The source amount in the cache key is normalized with decimal.js before key creation. Adjacent values
+such as A and A+1 therefore have distinct fresh, negative, stale, and in-flight entries; only decimal
+spellings of the same exact value can share work.
+
 `huf-eur-plan-fees.json` is synthetic multi-plan contract coverage and carries top-level
 `"_synthetic": true`. It demonstrates strict selection and fee normalization only; it is not live
 plan-availability or fee evidence.
+`eur-huf-adjacent-zero.json` and `eur-huf-adjacent-positive.json` are likewise synthetic A/A+1
+contract fixtures. They prove zero versus small-positive fee preservation and cache isolation, not a
+live or fixed Revolut threshold.
 
 For a successful quote, select exactly the requested plan and validate `fees.fx`, `fees.total`, and
 `fees.cost`. Their currencies must equal the source currency, total fee cannot be below FX fee, and
-total source-side cost must equal sender amount plus total fee. Use the endpoint's actual recipient
-amount; derive effective rate with decimal.js. Do not manually add fair-usage/weekend fees or apply a
-second payout calculation.
+total source-side cost must equal sender amount plus total fee. Derive the normalized target from the
+directional raw rate as described above and derive effective rate from that target. Do not manually
+add fair-usage/weekend fees or apply a second fee calculation.
+
+Expose `feePercentage = fees.total / sender.amount × 100` for source-driven quotes. Use decimal.js,
+retain the full decimal string in transport, and render enough fractional digits that a positive fee
+cannot appear as zero. Preserve `fees.total` and its source currency unchanged.
 
 If the requested exact plan is absent, return a numeric-field-free unavailable result explaining
 that the public Revolut endpoint did not return that plan. Do not collapse this into a generic fetch
@@ -110,6 +124,36 @@ confirmed matching sender/recipient currencies, positive recipient amounts, corr
 and rate timestamps. Every response returned only `STANDARD`; Plus/Premium/Metal/Ultra must remain
 unavailable unless their exact plan objects appear. Multi-plan fixtures exercise the strict contract
 but are not evidence of current live plan availability.
+
+Follow-up live evidence on 2026-07-15 showed whole-EUR HUF→EUR recipient displays: `0` for 100 HUF,
+`2` for 1,000 HUF, `27` for 10,000 HUF, and `67` around 24,560 HUF, while the raw directional rate
+remained positive and internally consistent within one displayed EUR. The former 0.5% relative check
+therefore produced a false amount threshold and has been replaced by the one-display-unit guard and
+transparent rate-derived payout normalization. This does not infer the opposite currency direction.
+
+Separate live evidence on 2026-07-15 found the official EUR→HUF converter UI at zero fee for
+968–971 EUR and at 0.01/0.02/0.03 EUR for 972/973/974 EUR. The threshold is dynamic. Exact
+source-driven public JSON requests for 968–974 all returned HTTP 200 but Standard `fees.fx = 0`,
+`fees.total = 0`, and `fees.cost = sender.amount`. This is a source-contract limitation, not a cache
+hit: each amount has a separate key and source URL. Do not hard-code the observed threshold, parse
+HTML, or reconstruct an authoritative Revolut fee locally. The endpoint fee is preserved exactly as
+source-reported, but is not assumed complete. Keep the quote visibly `FULL_ALLOWANCE_ASSUMED` and
+verify final fees in the app until controlled staging identifies an official machine-readable
+request context that reproduces the converter.
+
+Use the documented allowance policy only as a fail-safe ranking gate, never as a substitute fee.
+For weekday Standard/Plus, calculate zero-usage allowance consumption in HUF from the HUF source
+amount or from EUR source amount times the same directional Revolut rate. If it exceeds 350,000 HUF
+or 1,050,000 HUF respectively, return the quote with
+`rankingStatus = EXCLUDED_INCOMPLETE_FEES`, reason `FAIR_USAGE_FEE_NOT_RETURNED`, and the explicit
+missing-fee warning. It remains visible but cannot win. At or below the boundary it may rank as a
+qualified best-case quote. Premium/Metal/Ultra remain eligible on weekdays. Exact-boundary and
+synthetic adjacent-amount tests must not be presented as live threshold evidence.
+
+Until a controlled weekend probe verifies endpoint coverage, all Revolut plans are similarly
+excluded from ranking between Friday 17:00 ET and Sunday 18:00 ET. Evaluate this interval using the
+IANA `America/New_York` timezone, including DST transition weekends. Never derive a weekend fee
+locally from this classification.
 
 The result exposes selected plan, raw/effective rates, FX and total fee, fee currency, total
 source-side cost, tooltips, source/retrieval timestamps and an indicative warning. Revolut's legal page separately notes a
@@ -131,5 +175,6 @@ Comparison uses `rankingEffectiveRate = targetAmount / totalSourceCost` when thi
 source-currency Revolut cost exists. Providers without that optional field use
 `targetAmount / sourceAmount`. Sort descending; exact ties use ascending provider ID. A malformed,
 zero, or wrong-currency supplied cost is invalid rather than silently ignored. A Revolut result with
-`FULL_ALLOWANCE_ASSUMED` remains visible but is an optimistic best-case quote; a winning UI badge is
-explicitly qualified and final app verification remains mandatory.
+`FULL_ALLOWANCE_ASSUMED` remains visible but is an optimistic best-case quote. Only an eligible
+weekday result can receive the explicitly qualified badge; an incomplete-fee row receives no best
+badge even when its numeric payout is largest. Final app verification remains mandatory.

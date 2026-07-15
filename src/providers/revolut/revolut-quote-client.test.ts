@@ -9,6 +9,14 @@ import {
 
 const hufEurJson = readFileSync(new URL("./fixtures/huf-eur.json", import.meta.url), "utf8");
 const eurHufJson = readFileSync(new URL("./fixtures/eur-huf.json", import.meta.url), "utf8");
+const adjacentZeroFeeJson = readFileSync(
+  new URL("./fixtures/eur-huf-adjacent-zero.json", import.meta.url),
+  "utf8",
+);
+const adjacentPositiveFeeJson = readFileSync(
+  new URL("./fixtures/eur-huf-adjacent-positive.json", import.meta.url),
+  "utf8",
+);
 const planFeesJson = readFileSync(
   new URL("./fixtures/huf-eur-plan-fees.json", import.meta.url),
   "utf8",
@@ -51,6 +59,8 @@ describe("parseRevolutQuoteResponse", () => {
       pair: "HUF-EUR",
       sourceAmount: "100000",
       targetAmount: "277.43",
+      endpointRecipientAmount: "277.43",
+      targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
       rate: "0.0027743132467174",
       plan: "STANDARD",
       fxFee: { amount: "0", currency: "HUF" },
@@ -80,6 +90,36 @@ describe("parseRevolutQuoteResponse", () => {
       targetAmount: "354879",
       rate: "354.87926170023974",
       fxFee: { currency: "EUR" },
+    });
+  });
+
+  it("preserves adjacent synthetic zero and small-positive fee responses", () => {
+    const zeroFee = parseRevolutQuoteResponse({
+      payload: payload(adjacentZeroFeeJson),
+      request: { pair: "EUR-HUF", sourceAmount: "980", plan: "STANDARD" },
+      retrievedAt: new Date(1783951201280 + 60_000),
+      sourceUrl:
+        "https://www.revolut.com/api/exchange/quote?amount=980&country=HU&fromCurrency=EUR&isRecipientAmount=false&toCurrency=HUF",
+    });
+    const positiveFee = parseRevolutQuoteResponse({
+      payload: payload(adjacentPositiveFeeJson),
+      request: { pair: "EUR-HUF", sourceAmount: "981", plan: "STANDARD" },
+      retrievedAt: new Date(1783951201280 + 60_000),
+      sourceUrl:
+        "https://www.revolut.com/api/exchange/quote?amount=981&country=HU&fromCurrency=EUR&isRecipientAmount=false&toCurrency=HUF",
+    });
+
+    expect(payload(adjacentZeroFeeJson)).toMatchObject({ _synthetic: true });
+    expect(payload(adjacentPositiveFeeJson)).toMatchObject({ _synthetic: true });
+    expect(zeroFee).toMatchObject({
+      sourceAmount: "980",
+      totalFee: { amount: "0", currency: "EUR" },
+      totalSourceCost: { amount: "980", currency: "EUR" },
+    });
+    expect(positiveFee).toMatchObject({
+      sourceAmount: "981",
+      totalFee: { amount: "0.01", currency: "EUR" },
+      totalSourceCost: { amount: "981.01", currency: "EUR" },
     });
   });
 
@@ -142,10 +182,39 @@ describe("parseRevolutQuoteResponse", () => {
     );
   });
 
-  it("rejects zero recipient, implausible rates and inconsistent amounts", () => {
-    expect(() => parse(hufEurJson.replace('"amount": 277.43', '"amount": 0'))).toThrow(
-      "INVALID_RECIPIENT_AMOUNT",
-    );
+  it("normalizes a coarsely rounded zero recipient from the directional raw rate", () => {
+    const lowAmountJson = hufEurJson
+      .replaceAll("100000", "100")
+      .replace('"amount": 277.43', '"amount": 0');
+    const observation = parse(lowAmountJson, { ...hufRequest, sourceAmount: "100" });
+
+    expect(observation).toMatchObject({
+      sourceAmount: "100",
+      targetAmount: "0.27",
+      endpointRecipientAmount: "0",
+      targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+    });
+  });
+
+  it("normalizes a HUF amount below the former recipient-rounding rejection threshold", () => {
+    const belowFormerThresholdJson = hufEurJson
+      .replaceAll("100000", "24560")
+      .replace('"amount": 277.43', '"amount": 67')
+      .replace("0.0027743132467174", "0.0027686671533398");
+    const observation = parse(belowFormerThresholdJson, {
+      ...hufRequest,
+      sourceAmount: "24560",
+    });
+
+    expect(observation).toMatchObject({
+      sourceAmount: "24560",
+      targetAmount: "67.99",
+      endpointRecipientAmount: "67",
+      targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+    });
+  });
+
+  it("rejects implausible rates and endpoint recipient differences above one display unit", () => {
     expect(() => parse(hufEurJson.replace("0.0027743132467174", "0.5"))).toThrow(
       "IMPLAUSIBLE_RATE",
     );
@@ -391,6 +460,55 @@ describe("RevolutPublicQuoteClient", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps adjacent zero-fee and positive-fee amounts in separate fresh cache entries", async () => {
+    const fetcher = vi
+      .fn<(input: string, init: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(response(adjacentZeroFeeJson))
+      .mockResolvedValueOnce(response(adjacentPositiveFeeJson));
+    const client = new RevolutPublicQuoteClient({
+      fetch: fetcher,
+      now: () => new Date(1783951201280 + 60_000),
+    });
+    const amountA = { pair: "EUR-HUF", sourceAmount: "980", plan: "STANDARD" } as const;
+    const amountB = { pair: "EUR-HUF", sourceAmount: "981", plan: "STANDARD" } as const;
+
+    const zeroFee = await client.getQuote(amountA);
+    const positiveFee = await client.getQuote(amountB);
+    await client.getQuote(amountA);
+    await client.getQuote(amountB);
+
+    expect(zeroFee.totalFee.amount).toBe("0");
+    expect(positiveFee.totalFee.amount).toBe("0.01");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toContain("amount=980&");
+    expect(fetcher.mock.calls[1]?.[0]).toContain("amount=981&");
+  });
+
+  it("never returns one adjacent amount as another amount's stale fallback", async () => {
+    let nowMs = 1783951201280 + 60_000;
+    const fetcher = vi
+      .fn<(input: string, init: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(response(adjacentZeroFeeJson))
+      .mockResolvedValueOnce(response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(response(adjacentPositiveFeeJson));
+    const client = new RevolutPublicQuoteClient({ fetch: fetcher, now: () => new Date(nowMs) });
+    const amountA = { pair: "EUR-HUF", sourceAmount: "980", plan: "STANDARD" } as const;
+    const amountB = { pair: "EUR-HUF", sourceAmount: "981", plan: "STANDARD" } as const;
+
+    await client.getQuote(amountA);
+    nowMs += 61_000;
+    const staleA = await client.getQuote(amountA);
+    const freshB = await client.getQuote(amountB);
+
+    expect(staleA).toMatchObject({ sourceAmount: "980", freshness: "STALE" });
+    expect(freshB).toMatchObject({
+      sourceAmount: "981",
+      freshness: "FRESH",
+      totalFee: { amount: "0.01" },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
   it("negative-caches failure without retrying another request", async () => {
     const fetcher = vi.fn(async () => response("forbidden", { status: 403 }));
     const client = new RevolutPublicQuoteClient({
@@ -477,5 +595,35 @@ describe("RevolutPublicQuoteClient", () => {
 
     await expect(Promise.all([first, second])).resolves.toHaveLength(2);
     expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("single-flights only identical amount-and-plan requests", async () => {
+    const pendingResponses = new Map<string, (value: Response) => void>();
+    const fetcher = vi.fn(
+      async (input: string) =>
+        new Promise<Response>((resolve) => {
+          pendingResponses.set(input, resolve);
+        }),
+    );
+    const client = new RevolutPublicQuoteClient({
+      fetch: fetcher,
+      now: () => new Date(1783951201280 + 60_000),
+    });
+    const amountA = { pair: "EUR-HUF", sourceAmount: "980", plan: "STANDARD" } as const;
+    const amountB = { pair: "EUR-HUF", sourceAmount: "981", plan: "STANDARD" } as const;
+
+    const firstA = client.getQuote(amountA);
+    const duplicateA = client.getQuote(amountA);
+    const firstB = client.getQuote(amountB);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    for (const [url, resolve] of pendingResponses) {
+      resolve(
+        response(url.includes("amount=980&") ? adjacentZeroFeeJson : adjacentPositiveFeeJson),
+      );
+    }
+
+    await expect(Promise.all([firstA, duplicateA, firstB])).resolves.toHaveLength(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

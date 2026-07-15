@@ -19,10 +19,17 @@ export const revolutQuoteClientConfig = {
   maximumSourceObservationAgeMs: 15 * 60_000,
   maximumFutureClockSkewMs: 2 * 60_000,
   maximumJsonBytes: 250_000,
-  consistencyTolerance: "0.005",
+  maximumRecipientDisplayRoundingDifference: {
+    "EUR-HUF": "1",
+    "HUF-EUR": "1",
+  },
   plausibleRates: {
     "EUR-HUF": { minimum: "100", maximum: "1000" },
     "HUF-EUR": { minimum: "0.0005", maximum: "0.01" },
+  },
+  fairUsageAllowanceHuf: {
+    STANDARD: "350000",
+    PLUS: "1050000",
   },
 } as const;
 

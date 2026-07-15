@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { decimalToPlainString, decimal } from "@/domain/decimal";
 import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
 import {
+  calculateSourceSideFeePercentage,
+  sourceSideFeePercentageBasis,
+} from "@/domain/fee-percentage";
+import {
   availableQuoteSchema,
   type AvailableQuote,
   type Provider,
@@ -43,10 +47,36 @@ function comparisonQuote({
     totalSourceCost === undefined
       ? undefined
       : ({ currency: "EUR", amount: totalSourceCost } as const);
-  const onTopFee =
-    totalSourceCost === undefined
+  const providerDetails =
+    normalizedTotalSourceCost === undefined
       ? undefined
-      : decimalToPlainString(decimal(totalSourceCost).minus(sourceAmount.amount));
+      : (() => {
+          const onTopFee = decimalToPlainString(
+            decimal(normalizedTotalSourceCost.amount).minus(sourceAmount.amount),
+          );
+          return {
+            type: "REVOLUT_PERSONAL" as const,
+            plan: "STANDARD" as const,
+            displayedBaseRate: "400",
+            endpointRecipientAmount: target,
+            targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN" as const,
+            fxFee: { currency: "EUR", amount: onTopFee } as const,
+            totalFee: { currency: "EUR", amount: onTopFee } as const,
+            feePercentage: calculateSourceSideFeePercentage({
+              totalFee: onTopFee,
+              senderAmount: sourceAmount.amount,
+            }),
+            feePercentageBasis: sourceSideFeePercentageBasis,
+            feeCurrency: "EUR" as const,
+            totalSourceCost: normalizedTotalSourceCost,
+            allowanceAssumption: "FULL_ALLOWANCE_ASSUMED" as const,
+            allowanceConsumptionHuf: targetAmount,
+            fairUsageAllowanceHuf: "350000",
+            sessionClassification: "WEEKDAY" as const,
+            feeCoverage: "ENDPOINT_REPORTED_BEST_CASE" as const,
+            indicativeWarning: "Best-case public quote; verify in app.",
+          };
+        })();
 
   return availableQuoteSchema.parse({
     ...createMockQuote({
@@ -71,22 +101,9 @@ function comparisonQuote({
         : { totalSourceCost: normalizedTotalSourceCost }),
     }),
     sourceType: providerId === "REVOLUT" ? "LIVE_UNOFFICIAL" : "MOCK",
-    ...(normalizedTotalSourceCost === undefined
+    ...(providerDetails === undefined
       ? { providerDetails: undefined }
-      : {
-          customerPlan: "STANDARD",
-          providerDetails: {
-            type: "REVOLUT_PERSONAL",
-            plan: "STANDARD",
-            displayedBaseRate: "400",
-            fxFee: { currency: "EUR", amount: onTopFee },
-            totalFee: { currency: "EUR", amount: onTopFee },
-            feeCurrency: "EUR",
-            totalSourceCost: normalizedTotalSourceCost,
-            allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
-            indicativeWarning: "Best-case public quote; verify in app.",
-          },
-        }),
+      : { customerPlan: "STANDARD", providerDetails }),
   });
 }
 
@@ -211,6 +228,98 @@ describe("getQuotes", () => {
     expect(mock.rankingEffectiveRate).toBe("1");
     expect(revolut.rankingEffectiveRate).toBe("1");
     expect(response.bestProviderId).toBe("MOCK_PROVIDER");
+  });
+
+  it("keeps an incomplete Revolut quote visible but excludes it from best-result ranking", async () => {
+    const baseQuote = comparisonQuote({
+      providerId: "REVOLUT",
+      targetAmount: "400000",
+      totalSourceCost: "1000",
+    });
+    expect(baseQuote.providerDetails).toBeDefined();
+    const incompleteQuote = availableQuoteSchema.parse({
+      ...baseQuote,
+      rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
+      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      providerDetails: {
+        ...baseQuote.providerDetails,
+        feeCoverage: "INCOMPLETE_FAIR_USAGE",
+        feeCoverageWarning:
+          "The public Revolut endpoint did not return the applicable fair-usage fee.",
+      },
+    });
+    const registry = new ProviderAdapterRegistry([
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(incompleteQuote.provider, async () => incompleteQuote),
+      },
+    ]);
+
+    const response = await getQuotes(
+      {
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        providers: ["REVOLUT"],
+      },
+      { ...deterministicDependencies, registry },
+    );
+
+    expect(response.quotes).toHaveLength(1);
+    expect(response.quotes[0]).toMatchObject({
+      provider: { id: "REVOLUT" },
+      rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
+      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+    });
+    expect(response.bestProviderId).toBeNull();
+    expect(response.sourceStatus).toBe("NO_RANKABLE_QUOTES");
+    expect(response.warnings).toContain("REVOLUT_FEE_INCOMPLETE");
+  });
+
+  it("ranks an eligible provider above a higher-paying fee-incomplete Revolut quote", async () => {
+    const eligibleQuote = comparisonQuote({
+      providerId: "MOCK_PROVIDER",
+      targetAmount: "390000",
+    });
+    const baseRevolutQuote = comparisonQuote({
+      providerId: "REVOLUT",
+      targetAmount: "400000",
+      totalSourceCost: "1000",
+    });
+    const incompleteRevolutQuote = availableQuoteSchema.parse({
+      ...baseRevolutQuote,
+      rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
+      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      providerDetails: {
+        ...baseRevolutQuote.providerDetails,
+        feeCoverage: "INCOMPLETE_FAIR_USAGE",
+        feeCoverageWarning: "The source-reported fee data is incomplete.",
+      },
+    });
+    const registry = new ProviderAdapterRegistry([
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(incompleteRevolutQuote.provider, async () => incompleteRevolutQuote),
+      },
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(eligibleQuote.provider, async () => eligibleQuote),
+      },
+    ]);
+
+    const response = await getQuotes(
+      {
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        sourceAmount: "1000",
+        providers: ["REVOLUT", "MOCK_PROVIDER"],
+      },
+      { ...deterministicDependencies, registry },
+    );
+
+    expect(response.bestProviderId).toBe("MOCK_PROVIDER");
+    expect(response.quotes.map((quote) => quote.provider.id)).toEqual(["MOCK_PROVIDER", "REVOLUT"]);
+    expect(response.sourceStatus).toBe("PARTIAL_SUCCESS");
   });
 
   it.each([
@@ -661,6 +770,6 @@ describe("getQuotes", () => {
     );
 
     expect(response.bestProviderId).toBeNull();
-    expect(response.sourceStatus).toBe("NO_AVAILABLE_QUOTES");
+    expect(response.sourceStatus).toBe("NO_RANKABLE_QUOTES");
   });
 });

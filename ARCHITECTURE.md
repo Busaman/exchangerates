@@ -78,13 +78,32 @@ In the foundation mock, `totalCost` equals the explicit fee because no verified 
 available. Future spread-derived cost must be stored as a separately named component before it can
 be included in `totalCost`, with the cost currency and methodology documented.
 
-For Revolut personal quotes, the endpoint's actual sender and recipient amounts are authoritative
-for normalization. The adapter selects the exact requested personal plan, retains the raw directional
-rate, normalizes `fees.fx`, `fees.total`, and `fees.cost`, and derives the effective rate from actual
-recipient divided by sender using decimal.js. It neither reconstructs nor rounds the payout and never
-adds a manually calculated fee. Because the public request has no account identity or prior-usage
-parameter, results explicitly carry `FULL_ALLOWANCE_ASSUMED`; they cannot represent consumed rolling
-30-day allowance and must be confirmed in the app.
+For Revolut personal quotes, the endpoint sender, raw directional rate, plan fees, and recipient
+display are validated independently. Because the public endpoint may truncate HUF→EUR recipient
+displays to whole EUR, the adapter treats recipient as a consistency signal within one target display
+unit and calculates the indicative target as `sender × rawRate`, rounded down to the target-currency
+scale with decimal.js. The original recipient and `RAW_RATE_ROUNDED_DOWN` method are retained in
+provider details. It never adds a manually calculated fee. Because the public request has no account
+identity or prior-usage parameter, results explicitly carry `FULL_ALLOWANCE_ASSUMED`; they cannot
+represent consumed rolling 30-day allowance and must be confirmed in the app. Endpoint total fee is
+also normalized as `feePercentage = totalFee / senderAmount × 100` with decimal.js. The API retains
+the unrounded decimal string; only the UI applies presentation rounding and it increases precision
+when necessary so a positive fee never appears as zero.
+
+The official converter UI and the unauthenticated JSON endpoint are not assumed to have identical
+fee coverage. A 2026-07-15 observation showed the UI's first positive Standard fee moving with the
+rate while the same exact source-driven JSON requests returned zero fee. NeoRate preserves the JSON
+endpoint response, labels it best-case/full-allowance-assumed, and does not reconstruct a threshold
+or substitute locally calculated Revolut fees.
+
+Fee completeness is separate from quote availability. A normalized Revolut row carries
+`rankingStatus`, fee-coverage classification, HUF allowance consumption and an optional exclusion
+reason. On weekdays, Standard and Plus quotes whose zero-usage consumption exceeds their documented
+350,000/1,050,000 HUF allowance remain visible but are excluded from best-result ranking. Premium,
+Metal and Ultra have no fair-usage exclusion on weekdays. During Friday 17:00 ET through Sunday
+18:00 ET, every Revolut plan is excluded because public-endpoint weekend-fee coverage is unverified;
+the window is evaluated in `America/New_York` so DST changes are respected. This guard affects
+ranking only and never fabricates a fee.
 
 Every available quote exposes a separate `rankingEffectiveRate`. When a validated source-currency
 `providerDetails.totalSourceCost` exists, it is `targetAmount / totalSourceCost`; otherwise it is
@@ -93,11 +112,13 @@ top using one decimal.js metric. Ranking is descending by this value, with ascen
 the deterministic tie-break. The provider's raw/displayed and provider-specific effective rates keep
 their original meanings. Present-but-malformed, non-positive, or wrong-currency total source cost is
 a provider-invalid response; fallback applies only when that provider-specific field is absent.
+Only fresh `AVAILABLE` quotes with `rankingStatus = ELIGIBLE` enter this sort. If visible quotes exist
+but all are excluded or stale, the API returns `NO_RANKABLE_QUOTES` and `bestProviderId = null`.
 
 ## Cache and update strategy
 
 There is no shared cache yet. The Revolut quote client has an in-process 60-second fresh cache keyed
-by direction, normalized source amount, selected plan and every material provider context. Concurrent
+by direction, exact normalized source amount, selected plan and every material provider context. Concurrent
 refreshes for the same key share one in-flight request. Fetch/parse
 failure is negative-cached for 30 seconds to avoid repeated retry storms; this never extends the
 source timestamp or stale window. After a failed refresh, the last successful observation may be

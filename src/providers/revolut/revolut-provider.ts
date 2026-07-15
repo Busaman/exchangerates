@@ -4,7 +4,11 @@ import {
   type Provider,
   type QuoteRequest,
 } from "@/domain/quote";
-import { decimal, decimalToPlainString } from "@/domain/decimal";
+import { decimal, decimalToPlainString, roundDecimal } from "@/domain/decimal";
+import {
+  calculateSourceSideFeePercentage,
+  sourceSideFeePercentageBasis,
+} from "@/domain/fee-percentage";
 import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
 import type { ProviderAdapter, ProviderAdapterContext } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
@@ -14,10 +18,11 @@ import {
   RevolutPublicQuoteClient,
   type RevolutQuoteClient,
 } from "@/providers/revolut/revolut-quote-client";
+import { evaluateRevolutFeeCoverage } from "@/providers/revolut/revolut-fee-coverage";
 
 export const revolutProvider: Provider = { id: "REVOLUT", name: "Revolut Personal (HU)" };
 export const revolutIndicativeWarning =
-  "Indicative public-converter quote. The endpoint cannot know prior rolling 30-day account usage and NeoRate assumes the full plan allowance remains. Confirm the executable rate and every fee in the Revolut app before exchanging.";
+  "Indicative public-converter quote. The endpoint may coarsely round its recipient display, so NeoRate derives the displayed payout from the directional raw rate and rounds down to the target-currency scale. The endpoint cannot know prior rolling 30-day account usage and NeoRate assumes the full plan allowance remains. Confirm the executable rate and every fee in the Revolut app before exchanging.";
 
 export type RevolutProviderAdapterDependencies = Readonly<{
   quoteClient?: RevolutQuoteClient;
@@ -91,6 +96,17 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       targetAmount: { currency: request.targetCurrency, amount: observation.targetAmount },
       totalSourceCost: observation.totalSourceCost,
     });
+    const feePercentage = calculateSourceSideFeePercentage({
+      totalFee: observation.totalFee.amount,
+      senderAmount: request.sourceAmount,
+    });
+    const feeCoverage = evaluateRevolutFeeCoverage({
+      plan: personalContext.plan,
+      pair,
+      sourceAmount: request.sourceAmount,
+      rate: observation.rate,
+      at: new Date(request.requestedAt),
+    });
 
     return availableQuoteSchema.parse({
       kind: "quote",
@@ -104,6 +120,8 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       targetAmount: { currency: request.targetCurrency, amount: observation.targetAmount },
       effectiveRate,
       rankingEffectiveRate,
+      rankingStatus: feeCoverage.rankingStatus,
+      rankingExclusionReason: feeCoverage.rankingExclusionReason,
       explicitFee: observation.totalFee,
       totalCost: observation.totalFee,
       rateTimestamp: observation.rateTimestamp,
@@ -120,14 +138,31 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         type: "REVOLUT_PERSONAL",
         plan: observation.plan,
         displayedBaseRate: observation.rate,
+        ...(request.sourceCurrency === "HUF" && request.targetCurrency === "EUR"
+          ? {
+              sourceCurrencyPerTargetUnit: roundDecimal(decimal(1).dividedBy(observation.rate), 2),
+            }
+          : {}),
+        endpointRecipientAmount: {
+          currency: request.targetCurrency,
+          amount: observation.endpointRecipientAmount,
+        },
+        targetAmountCalculation: observation.targetAmountCalculation,
         fxFee: observation.fxFee,
         totalFee: observation.totalFee,
+        feePercentage,
+        feePercentageBasis: sourceSideFeePercentageBasis,
         feeCurrency: observation.totalFee.currency,
         totalSourceCost: observation.totalSourceCost,
         fxTooltip: observation.fxTooltip,
         planTooltipLong: observation.planTooltipLong,
         planTooltipShort: observation.planTooltipShort,
         allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
+        allowanceConsumptionHuf: feeCoverage.allowanceConsumptionHuf,
+        fairUsageAllowanceHuf: feeCoverage.fairUsageAllowanceHuf,
+        sessionClassification: feeCoverage.sessionClassification,
+        feeCoverage: feeCoverage.feeCoverage,
+        feeCoverageWarning: feeCoverage.feeCoverageWarning,
         indicativeWarning: revolutIndicativeWarning,
       },
     });

@@ -1,0 +1,25 @@
+{
+  "_synthetic": true,
+  "sender": { "amount": 980, "currency": "EUR" },
+  "recipient": { "amount": 349664, "currency": "HUF" },
+  "rate": {
+    "from": "EUR",
+    "to": "HUF",
+    "rate": 356.8,
+    "timestamp": 1783951201280
+  },
+  "fxTooltip": "Synthetic adjacent-amount zero-fee contract fixture",
+  "plans": [
+    {
+      "id": "STANDARD",
+      "name": "Standard",
+      "fees": {
+        "fx": { "amount": 0, "currency": "EUR" },
+        "total": { "amount": 0, "currency": "EUR" },
+        "cost": { "amount": 980, "currency": "EUR" }
+      },
+      "tooltipLong": "Synthetic zero-fee response",
+      "tooltipShort": "Synthetic zero fee"
+    }
+  ]
+}
