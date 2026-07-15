@@ -9,9 +9,12 @@ import {
 } from "@/domain/quote-api";
 import {
   supportedCurrencyCodeSchema,
+  revolutPersonalPlanSchema,
+  type RevolutPersonalPlan,
   type QuoteResult,
   type SupportedCurrencyCode,
 } from "@/domain/quote";
+import { bestResultBadgeLabel, isFullAllowanceAssumedQuote } from "@/components/comparison-labels";
 
 const currencyNames = {
   EUR: "EUR · euró",
@@ -23,6 +26,17 @@ const initialRequest: QuoteApiRequest = {
   targetCurrency: "HUF",
   sourceAmount: "1000",
   customerPlan: null,
+  providerContexts: {
+    REVOLUT: { plan: "STANDARD" },
+  },
+};
+
+const revolutPlanNames: Readonly<Record<RevolutPersonalPlan, string>> = {
+  STANDARD: "Standard",
+  PLUS: "Plus",
+  PREMIUM: "Premium",
+  METAL: "Metal",
+  ULTRA: "Ultra",
 };
 
 const genericApiErrorMessage = "A quote szolgáltatás válasza nem feldolgozható.";
@@ -45,6 +59,7 @@ function labelForStatus(result: QuoteResult): string {
   if (result.kind === "error")
     return result.errorCode === "PROVIDER_TIMEOUT" ? "Időtúllépés" : "Hiba";
   if (result.status === "STALE") return "Elavult";
+  if (result.sourceType === "LIVE_UNOFFICIAL") return "Élő · nem hivatalos API";
   return result.sourceType === "MOCK" ? "Mock adat" : result.status;
 }
 
@@ -72,9 +87,10 @@ async function fetchQuotes(
 
   if (!response.ok) {
     const parsedError = quoteApiErrorResponseSchema.safeParse(payload);
-    throw new Error(
-      parsedError.success ? parsedError.data.error.message : "A kérés sikertelen volt.",
-    );
+    if (parsedError.success) {
+      throw new Error(parsedError.data.error.message);
+    }
+    throw new Error("A kérés sikertelen volt.");
   }
 
   const parsedResponse = quoteApiResponseSchema.safeParse(payload);
@@ -86,6 +102,7 @@ export function ComparisonTool() {
   const [sourceCurrency, setSourceCurrency] = useState<SupportedCurrencyCode>("EUR");
   const [targetCurrency, setTargetCurrency] = useState<SupportedCurrencyCode>("HUF");
   const [amount, setAmount] = useState("1000");
+  const [revolutPlan, setRevolutPlan] = useState<RevolutPersonalPlan>("STANDARD");
   const [view, setView] = useState<ViewState>({ status: "loading" });
 
   useEffect(() => {
@@ -113,6 +130,9 @@ export function ComparisonTool() {
         targetCurrency,
         sourceAmount: amount.trim().replace(",", "."),
         customerPlan: null,
+        providerContexts: {
+          REVOLUT: { plan: revolutPlan },
+        },
       });
       setView({ status: "success", data });
     } catch (error) {
@@ -143,12 +163,36 @@ export function ComparisonTool() {
               Váltási összehasonlítás
             </h2>
             <p className="mt-1 text-sm text-slate-400">
-              A kapott összeg szerint rendezve, minden ismert díj levonása után.
+              A teljes forrásoldali költségre jutó kapott összeg szerint rendezve, minden ismert
+              díjat figyelembe véve.
             </p>
           </div>
           <span className="rounded-md bg-rose-400/10 px-2.5 py-1 font-mono text-xs font-semibold text-rose-200">
-            MOCK · NEM ÉLŐ
+            INDIKATÍV · NEM VÉGREHAJTHATÓ
           </span>
+        </div>
+        <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4">
+          <label className="grid gap-2 text-sm font-medium text-slate-300">
+            Revolut személyes csomag
+            <select
+              value={revolutPlan}
+              onChange={(event) =>
+                setRevolutPlan(revolutPersonalPlanSchema.parse(event.target.value))
+              }
+              className="h-11 rounded-lg border border-white/10 bg-[#12233a] px-3 text-white"
+            >
+              {Object.entries(revolutPlanNames).map(([plan, name]) => (
+                <option key={plan} value={plan}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-xs leading-5 text-slate-400">
+            A nyilvános konverter nem ismeri a fiókod elmúlt 30 napi kerethasználatát. Az API által
+            a kiválasztott csomaghoz visszaadott díjat mutatjuk egyszer, teljes rendelkezésre álló
+            keretet feltételezve; a személyes végleges ajánlatot ellenőrizd az appban.
+          </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_1.2fr_auto] md:items-end">
@@ -253,9 +297,14 @@ export function ComparisonTool() {
               >
                 <td className="px-5 py-5 sm:px-7">
                   <div className="font-semibold text-white">{result.provider.name}</div>
-                  {data?.bestProviderId === result.provider.id && (
+                  {isFullAllowanceAssumedQuote(result) ? (
+                    <span className="mt-1 block text-xs font-medium text-amber-200">
+                      Best-case · teljes rendelkezésre álló keret feltételezve
+                    </span>
+                  ) : null}
+                  {bestResultBadgeLabel(result, data?.bestProviderId) !== null && (
                     <span className="mt-1 inline-block text-xs font-medium text-emerald-300">
-                      Legjobb elérhető mock eredmény
+                      {bestResultBadgeLabel(result, data?.bestProviderId)}
                     </span>
                   )}
                 </td>
@@ -265,11 +314,60 @@ export function ComparisonTool() {
                       {formatMoney(result.targetAmount.amount, result.targetAmount.currency)}
                     </td>
                     <td className="px-4 py-5 font-mono text-sm text-slate-300">
-                      1 {result.pair.sourceCurrency} = {formatRate(result.effectiveRate)}{" "}
-                      {result.pair.targetCurrency}
+                      {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
+                        <span className="mb-1 block text-xs text-slate-500">
+                          Alap: 1 {result.pair.sourceCurrency} ={" "}
+                          {formatRate(result.providerDetails.displayedBaseRate)}{" "}
+                          {result.pair.targetCurrency}
+                        </span>
+                      ) : null}
+                      <span className="block">
+                        Szolgáltatói effektív: 1 {result.pair.sourceCurrency} ={" "}
+                        {formatRate(result.effectiveRate)} {result.pair.targetCurrency}
+                      </span>
+                      <span className="mt-1 block text-xs text-emerald-200">
+                        Költségnormalizált rangsorolási ráta: 1 {result.pair.sourceCurrency} ={" "}
+                        {formatRate(result.rankingEffectiveRate)} {result.pair.targetCurrency}
+                      </span>
                     </td>
                     <td className="px-4 py-5 text-sm text-slate-300">
-                      {formatMoney(result.explicitFee.amount, result.explicitFee.currency)}
+                      {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
+                        <span className="grid gap-1 text-xs">
+                          <span>
+                            FX díj:{" "}
+                            {formatMoney(
+                              result.providerDetails.fxFee.amount,
+                              result.providerDetails.feeCurrency,
+                            )}
+                          </span>
+                          <span>
+                            Összes díj:{" "}
+                            {formatMoney(
+                              result.providerDetails.totalFee.amount,
+                              result.providerDetails.feeCurrency,
+                            )}
+                          </span>
+                          <strong className="text-slate-200">
+                            Teljes forrásoldali költség:{" "}
+                            {formatMoney(
+                              result.providerDetails.totalSourceCost.amount,
+                              result.providerDetails.feeCurrency,
+                            )}
+                          </strong>
+                          {result.providerDetails.fxTooltip ? (
+                            <span className="max-w-xs text-slate-400">
+                              {result.providerDetails.fxTooltip}
+                            </span>
+                          ) : null}
+                          {result.providerDetails.planTooltipLong ? (
+                            <span className="max-w-xs text-slate-400">
+                              {result.providerDetails.planTooltipLong}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        formatMoney(result.explicitFee.amount, result.explicitFee.currency)
+                      )}
                     </td>
                   </>
                 ) : (
@@ -302,6 +400,14 @@ export function ComparisonTool() {
           <>
             <strong className="text-amber-100">Figyelem:</strong> a megjelenített ajánlat
             determinisztikus mock adat, nem élő vagy végrehajtható árfolyam.{" "}
+          </>
+        ) : null}
+        {data?.warnings.includes("REVOLUT_INDICATIVE") ? (
+          <>
+            <strong className="text-amber-100">Revolut:</strong> a nyilvános JSON-konverter ajánlata
+            LIVE_UNOFFICIAL besorolású, indikatív best-case eredmény, amely teljes rendelkezésre
+            álló keretet feltételez. Nem ismeri a fiókod tényleges kerethasználatát; a végrehajtható
+            árfolyamot és díjakat mindig ellenőrizd a Revolut appban.{" "}
           </>
         ) : null}
         {view.status === "loading" ? "A quote API válaszára várunk." : null}

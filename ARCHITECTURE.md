@@ -14,7 +14,7 @@ flowchart LR
   UI --> API["Route Handlers / application services"]
   API --> C["Comparison and normalization"]
   C --> A["Provider adapter registry"]
-  A --> O["Official provider source"]
+  A --> O["Approved public provider endpoints"]
   A --> M["Explicit mock adapter"]
   A --> X["Unavailable result"]
   C --> R["Reference-rate adapter (separate provenance)"]
@@ -30,7 +30,7 @@ be returned as a provider quote.
 
 Interactive inputs and presentational formatting live in client components. Retrieval, secrets,
 provider adapters, persistence and authoritative calculations run server-side. External consumers
-will use versioned Route Handlers (planned `/api/v1/quotes`); internal mutations may later use Server
+use the versioned `POST /api/v1/quotes` Route Handler; internal mutations may later use Server
 Actions. Domain objects crossing a boundary are runtime-validated.
 
 ## Provider adapters and ingestion
@@ -46,6 +46,23 @@ adapter lookup and all configured adapters. Registrations distinguish `SUPPORTED
 `UNAVAILABLE`; runtime timeout, exception and invalid-response failures become `FAILED` results.
 Adding a provider requires its identifier/schema entry, one isolated adapter, contract tests and one
 registry registration—quote orchestration and ranking contain no provider-specific branches.
+Registrations may set a provider-specific timeout. The service default is 2 seconds; enabled
+Revolut uses 10 seconds without extending the deadline of mock or future providers. Revolut is
+registered `UNAVAILABLE` unless `REVOLUT_ADAPTER_ENABLED` is exactly the lowercase string `true`.
+Missing, empty, `false`, or any unrecognized value fails safely to disabled and cannot prevent
+registry or route-module creation; this optional experimental flag is not parsed by a throwing
+module-scope schema and affects no other provider.
+
+The Revolut personal adapter is isolated under `src/providers/revolut`. Its dedicated client fetches
+only `GET https://www.revolut.com/api/exchange/quote` with allowlisted `amount`, `country=HU`,
+`fromCurrency`, `isRecipientAmount=false`, and `toCurrency` parameters. It sends JSON accept,
+`Accept-Language: hu`, and an identifying NeoRate User-Agent, enforces a 2.5-second per-attempt timeout and response-size limits,
+and retries only bounded transient failures. Zod validates every used sender, recipient, rate,
+timestamp, plan, fee and tooltip field while allowing unrelated future fields; decimal.js checks
+positivity, pair-specific plausibility, sender/recipient/rate consistency and fee-cost consistency.
+HTML, redirects, wrong directions, missing plans and malformed content fail closed. No cookies,
+authorization, browser identifiers, HTML parser, browser automation, Business API, private app
+endpoint, authenticated session or reciprocal rate is in the runtime path.
 
 ## Normalization and comparison
 
@@ -61,13 +78,33 @@ In the foundation mock, `totalCost` equals the explicit fee because no verified 
 available. Future spread-derived cost must be stored as a separately named component before it can
 be included in `totalCost`, with the cost currency and methodology documented.
 
+For Revolut personal quotes, the endpoint's actual sender and recipient amounts are authoritative
+for normalization. The adapter selects the exact requested personal plan, retains the raw directional
+rate, normalizes `fees.fx`, `fees.total`, and `fees.cost`, and derives the effective rate from actual
+recipient divided by sender using decimal.js. It neither reconstructs nor rounds the payout and never
+adds a manually calculated fee. Because the public request has no account identity or prior-usage
+parameter, results explicitly carry `FULL_ALLOWANCE_ASSUMED`; they cannot represent consumed rolling
+30-day allowance and must be confirmed in the app.
+
+Every available quote exposes a separate `rankingEffectiveRate`. When a validated source-currency
+`providerDetails.totalSourceCost` exists, it is `targetAmount / totalSourceCost`; otherwise it is
+`targetAmount / sourceAmount`. This compares fees deducted before conversion with fees charged on
+top using one decimal.js metric. Ranking is descending by this value, with ascending provider ID as
+the deterministic tie-break. The provider's raw/displayed and provider-specific effective rates keep
+their original meanings. Present-but-malformed, non-positive, or wrong-currency total source cost is
+a provider-invalid response; fallback applies only when that provider-specific field is absent.
+
 ## Cache and update strategy
 
-No shared cache is required in the foundation phase. A future adapter registry should use a short,
-provider-specific TTL and cache keys containing provider, direction, amount band/amount, plan and
-source version. Store `rateTimestamp` separately from `retrievedAt`. Serve stale numeric data only
-when product policy permits it, preserve its original provenance, mark it `STALE`, display its age,
-and refresh asynchronously. Never extend freshness after a failed refresh.
+There is no shared cache yet. The Revolut quote client has an in-process 60-second fresh cache keyed
+by direction, normalized source amount, selected plan and every material provider context. Concurrent
+refreshes for the same key share one in-flight request. Fetch/parse
+failure is negative-cached for 30 seconds to avoid repeated retry storms; this never extends the
+source timestamp or stale window. After a failed refresh, the last successful observation may be
+returned for at most 15 minutes only with `STALE` status; stale quotes are displayed but never
+ranked best. A failed refresh never changes the original `rateTimestamp` or `retrievedAt`. After the
+stale interval, the adapter returns unavailable without numbers. A future shared cache must preserve
+these semantics.
 
 ## Persistence
 
@@ -84,10 +121,14 @@ include provenance/status timestamps. `LIVE_OFFICIAL` means documented provider-
 `MOCK` is development/test only. `UNAVAILABLE` has no numeric values. `STALE` retains the original
 source type plus a stale status.
 
+The Revolut JSON endpoint is used by an official Revolut webpage but is not documented as a supported
+external personal API, so success is always `LIVE_UNOFFICIAL` with the exact request URL, an indicative
+warning and medium reliability. The endpoint's rate timestamp is distinct from NeoRate retrieval time.
+
 `POST /api/v1/quotes` validates a strict request, including a 30-character amount limit and
 currency-specific minimums of 0.01 EUR and 100 HUF, resolves selected adapters through the registry,
 calls them in parallel with per-provider abort/timeout support, validates normalized results, ranks
-only fresh `AVAILABLE` quotes with positive payouts, and validates the response before returning it. A valid request always
+only fresh `AVAILABLE` quotes with positive payouts by cost-normalized effective rate, and validates the response before returning it. A valid request always
 gets a `200` domain response even when all providers are unavailable/failed; malformed requests get
 structured `400` errors and unexpected route failures get sanitized `500` errors.
 
@@ -102,6 +143,7 @@ sequenceDiagram
   API->>S: Validated request
   S->>R: Resolve selected provider IDs
   S->>A: Parallel calls with timeout/AbortSignal
+  A->>A: Fetch JSON, validate selected plan fees, cache
   A-->>S: quote | unavailable | exception
   S->>S: Validate, separate issues, rank fresh quotes
   S-->>API: Validated response contract
@@ -110,8 +152,8 @@ sequenceDiagram
 
 ## Errors, observability and security
 
-Expected provider failures are typed results. The comparison service isolates unexpected adapter
-failures into unavailable results while emitting structured error logs with request/provider context
+Expected source failures are typed unavailable results. The comparison service isolates unexpected
+adapter failures into `error/FAILED` results while emitting structured error logs with request/provider context
 but no credentials or raw sensitive payloads; request/schema failures outside an adapter still fail
 the request rather than being mislabeled as provider unavailability.
 Future production telemetry should measure adapter latency, success rate, quote age, cache behavior

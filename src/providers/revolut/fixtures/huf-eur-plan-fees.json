@@ -1,0 +1,62 @@
+{
+  "_synthetic": true,
+  "sender": { "amount": 1100000, "currency": "HUF" },
+  "recipient": { "amount": 3051.74, "currency": "EUR" },
+  "rate": {
+    "from": "HUF",
+    "to": "EUR",
+    "rate": 0.0027743132467174,
+    "timestamp": 1783958571976
+  },
+  "fxTooltip": "Plan-specific public converter fees",
+  "plans": [
+    {
+      "id": "STANDARD",
+      "name": "Standard",
+      "fees": {
+        "fx": { "amount": 7500, "currency": "HUF" },
+        "total": { "amount": 7500, "currency": "HUF" },
+        "cost": { "amount": 1107500, "currency": "HUF" }
+      },
+      "tooltipLong": "A public converter exchange fee applies",
+      "tooltipShort": "Exchange fee"
+    },
+    {
+      "id": "PLUS",
+      "name": "Plus",
+      "fees": {
+        "fx": { "amount": 250, "currency": "HUF" },
+        "total": { "amount": 250, "currency": "HUF" },
+        "cost": { "amount": 1100250, "currency": "HUF" }
+      },
+      "tooltipShort": "Exchange fee"
+    },
+    {
+      "id": "PREMIUM",
+      "name": "Premium",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 1100000, "currency": "HUF" }
+      }
+    },
+    {
+      "id": "METAL",
+      "name": "Metal",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 1100000, "currency": "HUF" }
+      }
+    },
+    {
+      "id": "ULTRA",
+      "name": "Ultra",
+      "fees": {
+        "fx": { "amount": 0, "currency": "HUF" },
+        "total": { "amount": 0, "currency": "HUF" },
+        "cost": { "amount": 1100000, "currency": "HUF" }
+      }
+    }
+  ]
+}

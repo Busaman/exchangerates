@@ -81,6 +81,11 @@ This rounding mode is a mock-fixture policy, not a universal customer-payout rul
 provider adapter must reproduce and test the provider's documented fee, rate and payout rounding
 direction. Until verified, an adapter must return unavailable rather than apply the mock policy.
 
+The Revolut JSON client does not apply a NeoRate payout rounding rule. It preserves the endpoint's
+actual sender and recipient amounts and uses decimal.js only to derive and validate values such as
+effective rate. Any precision or rounding in those returned amounts belongs to the endpoint contract
+and remains indicative rather than a claim about executable app rounding.
+
 The public quote API limits source amounts to 30 characters and applies product minimums of 0.01 EUR
 and 100 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
 payout as the best available quote. Normalized `AVAILABLE` quotes independently require positive
@@ -91,7 +96,85 @@ source amounts, target amounts and effective rates as defense in depth.
 **Status:** Accepted (2026-07-13)
 
 Compose provider adapters only in `ProviderAdapterRegistry`. The quote service selects registry
-entries, applies a 2-second default provider timeout with `AbortSignal`, validates results and ranks
-only fresh `AVAILABLE` quotes. Expose this through strict `POST /api/v1/quotes`. Valid partial or
+entries, applies a 2-second default provider timeout with `AbortSignal`, and honors optional
+per-registration deadlines (10 seconds for the enabled experimental Revolut adapter). It validates
+results and ranks only fresh `AVAILABLE` quotes. Expose this through strict `POST /api/v1/quotes`. Valid partial or
 complete provider failure is a `200` domain response; request validation is `400`, and unexpected
 route failure is a sanitized `500`. Provider errors never expose stack traces or private messages.
+
+Every successful quote has an explicit cost-normalized `rankingEffectiveRate`. Use
+`targetAmount / providerDetails.totalSourceCost` when that cost exists, is positive, and uses the
+source currency; otherwise use `targetAmount / sourceAmount`. All arithmetic and comparison use
+decimal.js. Sort descending, then break exact ties by ascending provider identifier. This treats a
+fee deducted before conversion and a fee charged separately on top consistently. A malformed or
+wrong-currency provider-supplied total cost fails closed as `PROVIDER_INVALID_RESPONSE`; absence of
+the optional provider cost is the only fallback case. Raw rate and provider-specific `effectiveRate`
+retain their existing semantics.
+
+## ADR-011 — Revolut Hungary personal public JSON integration
+
+**Status:** Accepted with operational caveat (2026-07-13)
+
+Support only Hungarian personal `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA` plans for
+directional EUR/HUF and HUF/EUR. Revolut's official converter uses the publicly reachable
+`GET https://www.revolut.com/api/exchange/quote` endpoint, but Revolut does not document it as a
+supported external personal API. Fetch it with `amount`, `country=HU`, `fromCurrency`,
+`isRecipientAmount=false`, and `toCurrency`; classify successful observations as
+`LIVE_UNOFFICIAL`. Hungarian locale selection uses the website endpoint's `Accept-Language: hu`
+header; there is no `localeCode` query parameter. Never use HTML/`__NEXT_DATA__`, cookies, authorization, user/browser identifiers,
+browser automation, Revolut Business/Pro, private authenticated app endpoints, reciprocal
+inference, or a reference-rate fallback.
+
+Use a 2.5-second per-attempt source timeout, two retries (150 ms and 400 ms backoff), a 60-second
+in-process fresh cache, a 30-second negative-result cache, amount/plan-specific single-flight
+refreshes, and a 15-minute maximum stale window. Negative caching reduces repeated blocked traffic
+but never renews a successful observation or extends the stale window. Endpoint timestamps older
+than 15 minutes, future timestamps beyond 2 minutes, non-JSON content, redirects, inconsistent
+sender/recipient/rate values, wrong directions, invalid plan fee data, and values outside configured
+EUR/HUF or HUF/EUR plausibility bounds are rejected. A cached observation after refresh failure is
+explicitly `STALE` and cannot win comparison.
+
+Sender amount and currencies must match exactly. The raw rate is checked against actual
+recipient/sender using a configurable 0.5% relative tolerance only to accommodate the endpoint's
+displayed recipient precision; this tolerance does not alter any amount, rate or fee returned to the
+user. Fee currency checks are exact; source-cost arithmetic uses only the minor-unit tolerance below.
+
+The endpoint serializes monetary display values at currency precision, so accept a difference of at
+most one source-currency minor unit between `fees.cost` and `sender.amount + fees.total`: 1 HUF or
+0.01 EUR, inclusive. Larger differences fail closed. This tolerance validates the response but does
+not change the returned cost used for ranking.
+
+The selected plan's complete endpoint fee object is authoritative for this indicative quote. NeoRate
+requires an exact personal plan match, validates `fees.fx`, `fees.total`, and `fees.cost`, requires a
+consistent source fee currency and total source-side cost, and uses that fee once. It does not
+manually recalculate fair-usage or weekend fees and therefore cannot double-charge them.
+
+The endpoint request contains no account identity or prior rolling-30-day usage. Sanitized fixtures
+show complete per-plan fee objects without such context. NeoRate removes the usage input and labels
+every successful quote `FULL_ALLOWANCE_ASSUMED`; this is less misleading than accepting account
+usage while also using endpoint-computed fees. Actual allowance and weekend fees must be verified
+in-app.
+
+The 2026-07-13 no-cookie live probe with `Accept-Language: hu` returned `200 OK` for HUF→EUR at
+100,000, 400,000, and 1,100,000 HUF and EUR→HUF at 100, 1,000, and 3,000 EUR. Every sanitized summary
+reported matching currencies, positive recipient amount, correct rate direction, and a timestamp.
+Every response exposed only `STANDARD`; NeoRate therefore fails closed for the other selected plans
+until the endpoint returns their exact complete plan fee objects. Fixture support is contract coverage,
+not evidence that every plan is currently returned live. The multi-plan
+`huf-eur-plan-fees.json` fixture is explicitly marked `_synthetic: true` and must never be cited as
+live evidence.
+
+The endpoint is undocumented and its contract/access requirements may change. Saved JSON fixtures
+contain only sanitized contract evidence and tests never call Revolut. The Hungarian legal page also describes a conditional migration-linked
+special transaction fee whose customer activation cannot be inferred from public context; it is not
+modeled and the UI requires final app verification. This adapter is not production approval to rely
+on the page as an executable quote. The registration is `UNAVAILABLE` by default and performs no
+outbound request. `REVOLUT_ADAPTER_ENABLED=true` is an explicit staging-only opt-in until live
+server access, JSON-contract reliability and legal/product approval have been demonstrated.
+Only the exact lowercase string `true` enables it. `false`, missing, empty, `yes`, `1`, `TRUE`, and
+all other values safely disable Revolut; an unrecognized non-empty value may emit a server warning
+but cannot throw during registry or route loading or affect other adapters.
+
+`FULL_ALLOWANCE_ASSUMED` is an optimistic best-case constraint, not account-specific evidence. The
+UI keeps such rows visible, labels them as full-allowance-assumed, and qualifies a winning badge as
+“Legjobb indikatív best-case eredmény · teljes keret feltételezve”. App verification remains required.

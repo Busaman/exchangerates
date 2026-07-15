@@ -139,6 +139,42 @@ describe("POST /api/v1/quotes", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects unsupported plans and obsolete Revolut usage context", async () => {
+    const obsoleteUsage = await POST(
+      postJson({
+        ...validRequest,
+        providers: ["REVOLUT"],
+        providerContexts: {
+          REVOLUT: { plan: "STANDARD", rollingThirtyDayExchangeUsedHuf: "0" },
+        },
+      }),
+    );
+    const unsupportedPlan = await POST(
+      postJson({
+        ...validRequest,
+        providers: ["REVOLUT"],
+        providerContexts: { REVOLUT: { plan: "BUSINESS" } },
+      }),
+    );
+
+    const malformedPayload = quoteApiErrorResponseSchema.parse(await obsoleteUsage.json());
+
+    expect(obsoleteUsage.status).toBe(400);
+    expect(malformedPayload.error.fields?.providerContexts).not.toEqual([]);
+    expect(unsupportedPlan.status).toBe(400);
+  });
+
+  it("returns unavailable rather than numeric values when Revolut context is omitted", async () => {
+    const response = await POST(
+      postJson({ ...validRequest, providers: ["REVOLUT"], providerContexts: undefined }),
+    );
+    const payload = quoteApiResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(payload.quotes).toEqual([]);
+    expect(payload.issues[0]).toMatchObject({ kind: "unavailable", provider: { id: "REVOLUT" } });
+  });
+
   it("rejects unexpected request fields", async () => {
     const response = await POST(postJson({ ...validRequest, secretOverride: true }));
     expect(response.status).toBe(400);

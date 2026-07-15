@@ -17,7 +17,10 @@ import {
 import { logger } from "@/lib/logger";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { ProviderAdapterRegistry, providerRegistry } from "@/providers/provider-registry";
-import { createProviderErrorResult } from "@/providers/unavailable-result";
+import {
+  createProviderErrorResult,
+  createProviderUnavailableResult,
+} from "@/providers/unavailable-result";
 
 export const defaultProviderTimeoutMs = 2_000;
 
@@ -73,8 +76,18 @@ function publicReasonFor(errorCode: ProviderErrorCode): string {
   return "The provider quote could not be retrieved.";
 }
 
-function isRankableQuote(result: QuoteResult): result is AvailableQuote {
+function isRankableQuote(result: QuoteResult): boolean {
   return result.kind === "quote" && result.status === "AVAILABLE" && result.freshness !== "STALE";
+}
+
+function compareRankableQuotes(left: AvailableQuote, right: AvailableQuote): number {
+  const rateComparison = compareDecimalStrings(
+    right.rankingEffectiveRate,
+    left.rankingEffectiveRate,
+  );
+  if (rateComparison !== 0) return rateComparison;
+  if (left.provider.id === right.provider.id) return 0;
+  return left.provider.id < right.provider.id ? -1 : 1;
 }
 
 export async function getQuotes(
@@ -83,7 +96,6 @@ export async function getQuotes(
 ): Promise<QuoteApiResponse> {
   const request = quoteApiRequestSchema.parse(requestInput);
   const registry = dependencies.registry ?? providerRegistry;
-  const timeoutMs = dependencies.providerTimeoutMs ?? defaultProviderTimeoutMs;
   const now = dependencies.now ?? (() => new Date());
   const requestId = (dependencies.createRequestId ?? randomUUID)();
   const generatedAt = now().toISOString();
@@ -98,8 +110,21 @@ export async function getQuotes(
         targetCurrency: request.targetCurrency,
         sourceAmount: request.sourceAmount,
         customerPlan: request.customerPlan ?? undefined,
+        providerContexts: request.providerContexts,
         requestedAt: generatedAt,
       };
+
+      if (registration.status === "UNAVAILABLE") {
+        return createProviderUnavailableResult({
+          provider: registration.adapter.provider,
+          request: providerRequest,
+          reason: registration.reason,
+          sourceId: registration.sourceId,
+        });
+      }
+
+      const timeoutMs =
+        dependencies.providerTimeoutMs ?? registration.timeoutMs ?? defaultProviderTimeoutMs;
 
       try {
         return await callWithTimeout(registration.adapter, providerRequest, timeoutMs);
@@ -116,13 +141,19 @@ export async function getQuotes(
     }),
   );
 
-  const quotes = results.filter((result): result is AvailableQuote => result.kind === "quote");
+  const quotes = results
+    .filter((result): result is AvailableQuote => result.kind === "quote")
+    .toSorted((left, right) => {
+      const leftRankable = isRankableQuote(left);
+      const rightRankable = isRankableQuote(right);
+      if (leftRankable && rightRankable) return compareRankableQuotes(left, right);
+      if (leftRankable) return -1;
+      if (rightRankable) return 1;
+      if (left.provider.id === right.provider.id) return 0;
+      return left.provider.id < right.provider.id ? -1 : 1;
+    });
   const issues = results.filter((result) => result.kind !== "quote");
-  const rankableQuotes = results
-    .filter(isRankableQuote)
-    .toSorted((left, right) =>
-      compareDecimalStrings(right.targetAmount.amount, left.targetAmount.amount),
-    );
+  const rankableQuotes = quotes.filter(isRankableQuote);
   const bestProviderId = rankableQuotes[0]?.provider.id ?? null;
   const sourceStatus =
     rankableQuotes.length === 0
@@ -130,9 +161,14 @@ export async function getQuotes(
       : rankableQuotes.length < results.length
         ? "PARTIAL_SUCCESS"
         : "SUCCESS";
-  const warnings = quotes.some((quote) => quote.sourceType === "MOCK")
-    ? (["MOCK_DATA"] as const)
-    : [];
+  const warnings = [
+    ...(quotes.some((quote) => quote.sourceType === "MOCK") ? (["MOCK_DATA"] as const) : []),
+    ...(quotes.some(
+      (quote) => quote.provider.id === "REVOLUT" && quote.sourceType === "LIVE_UNOFFICIAL",
+    )
+      ? (["REVOLUT_INDICATIVE"] as const)
+      : []),
+  ];
 
   return quoteApiResponseSchema.parse({
     request: {
@@ -142,6 +178,7 @@ export async function getQuotes(
       sourceAmount: request.sourceAmount,
       providers: providerIds,
       customerPlan: request.customerPlan ?? null,
+      providerContexts: request.providerContexts,
     },
     quotes,
     issues,

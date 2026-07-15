@@ -19,8 +19,9 @@ No scraping, private API reverse engineering or endpoint guessing belongs in an 
 6. Return `unavailable` without numeric fields for unsupported pairs, failed validation, provider
    downtime or missing reliable data. Do not substitute a market rate.
 7. Log structured operational context without credentials, account details or sensitive raw payloads.
-8. Add a `ProviderRegistration` to `providerRegistry` with status `SUPPORTED` or `UNAVAILABLE`.
-   Do not add provider-specific conditionals to the quote service or API route.
+8. Add a `ProviderRegistration` to `providerRegistry` with status `SUPPORTED` or `UNAVAILABLE`,
+   including a provider-specific timeout only when measured behavior requires it. Do not add
+   provider-specific conditionals to the quote service or API route.
 
 Adapters receive an `AbortSignal` in their context and should stop network work promptly when it is
 aborted. They return normalized `quote` or `unavailable` results. Thrown exceptions, timeouts and
@@ -39,3 +40,96 @@ results with public error codes; private exception details remain in structured 
   timestamps, provenance and numeric-field-free non-quote results.
 
 Keep a new adapter disabled until its source, tests and user-facing labeling have been reviewed.
+
+## Revolut Hungary personal adapter
+
+Scope is personal customers only: `STANDARD`, `PLUS`, `PREMIUM`, `METAL`, and `ULTRA`, with an
+explicit selected plan. Revolut Business, Pro, merchant/corporate products, authenticated accounts,
+private app endpoints and reciprocal inference are prohibited.
+
+Approved public website endpoint:
+
+- `GET https://www.revolut.com/api/exchange/quote`
+- required query: `amount`, `country=HU`, `fromCurrency`, `isRecipientAmount=false`, `toCurrency`
+- request headers: `Accept: application/json`, `Accept-Language: hu`, and the non-deceptive NeoRate User-Agent only
+- explicitly forbidden: cookies, authorization, browser/user identifiers, copied Cloudflare data,
+  Sentry/analytics headers, HTML parsing and browser automation
+
+Fee policy sources:
+
+- `https://help.revolut.com/hu-HU/help/wealth/exchanging-money/how-much-does-it-cost-to-make-an-exchange/will-i-be-charged-for-exchanging-foreign-currencies/`
+- `https://www.revolut.com/hu-HU/legal/standard-fees/`
+
+There is no documented public personal Revolut API. Although this JSON endpoint is publicly
+accessible and used by Revolut's official converter, it is not a supported external contract; valid
+results are `LIVE_UNOFFICIAL`, medium-reliability and explicitly indicative. Preserve the exact query
+URL, endpoint timestamp and retrieval timestamp. Non-JSON content, redirect/challenge responses,
+invalid fields or access failure become unavailable and no fallback is allowed.
+
+Returned sender amount and currency direction must match exactly. The only numerical tolerance is a
+configurable 0.5% relative check between raw rate and actual recipient/sender, allowing for the
+endpoint's displayed recipient precision; normalization never changes the endpoint values. Fee
+currency checks are exact; source-cost arithmetic uses only the minor-unit tolerance below.
+
+Because endpoint monetary values use display precision, `fees.cost` may differ from
+`sender.amount + fees.total` by at most one source-currency minor unit: 1 HUF or 0.01 EUR. The
+boundary is inclusive; a larger difference is invalid. The returned cost is preserved unchanged.
+
+Fixtures under `src/providers/revolut/fixtures` are sanitized JSON contract examples. Unit tests
+never call Revolut. The optional `pnpm test:revolut:live` script runs only with
+`REVOLUT_LIVE_TEST_ENABLED=true` and prints sanitized summaries. The client uses a 2.5-second
+per-attempt timeout, two bounded retries, 60-second fresh cache, 30-second negative cache,
+amount/direction/plan-specific single-flight and a 15-minute stale ceiling. Negative results suppress
+retry storms but do not renew timestamps or stale age. Only a last successful observation for the
+same material request can become `STALE`; it is never ranked.
+
+`huf-eur-plan-fees.json` is synthetic multi-plan contract coverage and carries top-level
+`"_synthetic": true`. It demonstrates strict selection and fee normalization only; it is not live
+plan-availability or fee evidence.
+
+For a successful quote, select exactly the requested plan and validate `fees.fx`, `fees.total`, and
+`fees.cost`. Their currencies must equal the source currency, total fee cannot be below FX fee, and
+total source-side cost must equal sender amount plus total fee. Use the endpoint's actual recipient
+amount; derive effective rate with decimal.js. Do not manually add fair-usage/weekend fees or apply a
+second payout calculation.
+
+If the requested exact plan is absent, return a numeric-field-free unavailable result explaining
+that the public Revolut endpoint did not return that plan. Do not collapse this into a generic fetch
+failure and never substitute Standard.
+
+The endpoint has no authenticated account or prior-usage input and therefore cannot know actual
+rolling-30-day allowance usage. NeoRate has removed the old usage field rather than claim false
+account-specific accuracy or double-charge endpoint fees. Results state `FULL_ALLOWANCE_ASSUMED` and
+must be checked in-app. The locale is selected by `Accept-Language: hu`, not by a query parameter.
+The public request still does not reveal account-specific allowance usage, so below/above-allowance
+and weekday/weekend account behavior must be confirmed in the Revolut app and controlled staging.
+
+Live evidence captured 2026-07-13 with no cookies or authorization: HUF→EUR at 100,000, 400,000, and
+1,100,000 HUF and EUR→HUF at 100, 1,000, and 3,000 EUR all returned HTTP 200. Sanitized summaries
+confirmed matching sender/recipient currencies, positive recipient amounts, correct rate directions,
+and rate timestamps. Every response returned only `STANDARD`; Plus/Premium/Metal/Ultra must remain
+unavailable unless their exact plan objects appear. Multi-plan fixtures exercise the strict contract
+but are not evidence of current live plan availability.
+
+The result exposes selected plan, raw/effective rates, FX and total fee, fee currency, total
+source-side cost, tooltips, source/retrieval timestamps and an indicative warning. Revolut's legal page separately notes a
+conditional Hungarian migration-linked special transaction fee. Because public request context
+cannot establish its activation for a customer, NeoRate does not calculate it and requires final
+verification in the Revolut app.
+
+The registration is disabled by default. Without `REVOLUT_ADAPTER_ENABLED=true`, an explicit
+Revolut selection returns a numeric-field-free unavailable result and makes no endpoint request. Enable
+the flag only in controlled staging until server-side access, schema success and legal/product
+approval satisfy the approval gate. The registry's 10-second Revolut deadline does not change the
+2-second service default used by other providers.
+
+The gate is typo-safe: only exact lowercase `true` enables Revolut. Missing, empty, `false`, `yes`,
+`1`, `TRUE`, or any other value disables it without throwing or blocking other providers. An
+unrecognized non-empty value may be logged server-side.
+
+Comparison uses `rankingEffectiveRate = targetAmount / totalSourceCost` when this validated
+source-currency Revolut cost exists. Providers without that optional field use
+`targetAmount / sourceAmount`. Sort descending; exact ties use ascending provider ID. A malformed,
+zero, or wrong-currency supplied cost is invalid rather than silently ignored. A Revolut result with
+`FULL_ALLOWANCE_ASSUMED` remains visible but is an optimistic best-case quote; a winning UI badge is
+explicitly qualified and final app verification remains mandatory.

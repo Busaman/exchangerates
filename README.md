@@ -5,9 +5,12 @@ neobanks, fintech providers and selected banks, after known provider margins and
 supported directions are EUR/HUF and HUF/EUR; the domain and adapter boundaries are designed for
 more currencies and providers.
 
-> **Foundation status:** the application currently displays one deterministic mock provider and one
-> intentionally unavailable provider. It does **not** show live or executable rates and is not
-> production-ready. A market mid-rate must never be presented as a provider customer rate.
+> **Current status:** NeoRate includes a disabled-by-default experimental Hungarian personal
+> Revolut adapter, one deterministic mock and one intentionally unavailable provider. Revolut must
+> be explicitly enabled with `REVOLUT_ADAPTER_ENABLED=true` only in a controlled staging
+> environment. Validated data from Revolut's public website JSON endpoint is `LIVE_UNOFFICIAL`,
+> indicative—not executable—and endpoint or validation failure produces no numeric quote. Always confirm the
+> final rate and fees in the Revolut app. NeoRate currently covers personal-provider pricing only.
 
 ## Selected stack
 
@@ -48,10 +51,24 @@ characters, values below the source-currency minimum (0.01 EUR or 100 HUF), and 
   "sourceCurrency": "EUR",
   "targetCurrency": "HUF",
   "sourceAmount": "1000",
-  "providers": ["MOCK_PROVIDER", "UNAVAILABLE_PROVIDER"],
-  "customerPlan": null
+  "providers": ["REVOLUT"],
+  "customerPlan": null,
+  "providerContexts": {
+    "REVOLUT": {
+      "plan": "STANDARD"
+    }
+  }
 }
 ```
+
+Select `REVOLUT` to request Hungarian personal pricing. `plan` must be one of `STANDARD`, `PLUS`,
+`PREMIUM`, `METAL`, or `ULTRA`; Business and Pro are rejected. The public endpoint returns plan fee
+objects but has no account identity or prior-usage input, so it cannot know the customer's actual
+rolling 30-day allowance usage. NeoRate does not ask for or invent that value and does not add a
+second manually calculated fee: the selected endpoint plan fee is normalized once, with a visible
+`FULL_ALLOWANCE_ASSUMED` limitation. Omitting the whole Revolut context yields a numeric-field-free
+unavailable result; malformed context is a `400` validation error. When the experimental adapter
+gate is off, an explicit Revolut request returns an unavailable result without making an HTTP request.
 
 A successful HTTP response uses status `200`, including partial or fully unavailable provider
 outcomes. It contains request metadata, normalized `quotes`, numeric-field-free `issues`,
@@ -113,8 +130,37 @@ Invalid JSON or input returns `400` with
 `INVALID_JSON` or `VALIDATION_ERROR`. Unexpected server failures return a sanitized `500
 INTERNAL_ERROR`; stack traces and internal provider errors are never returned.
 
-Provider calls time out after 2 seconds by default. One timeout or exception becomes a provider-level
-`FAILED` issue and does not remove valid results from other providers.
+Provider calls time out after 2 seconds by default. Registrations can declare a narrower or wider
+deadline; the enabled experimental Revolut registration uses 10 seconds to contain its bounded
+internal retries. One timeout or exception becomes a provider-level `FAILED` issue and does not
+remove valid results from other providers.
+
+### Revolut personal quote fields
+
+A successful Revolut result has provider id `REVOLUT`, source type `LIVE_UNOFFICIAL`, the exact
+converter `sourceUrl`, source and retrieval timestamps, and `providerDetails.type` set to
+`REVOLUT_PERSONAL`. Details include the displayed directional base rate, personal plan,
+`fxFee`, `totalFee`, fee currency, total source-side cost, the endpoint and selected-plan tooltip
+text, and `allowanceAssumption: FULL_ALLOWANCE_ASSUMED`. Responses also include
+`REVOLUT_INDICATIVE`; the final quote must be checked in-app.
+
+Every successful quote also exposes `rankingEffectiveRate`. It equals `targetAmount /
+providerDetails.totalSourceCost` when a valid source-currency total cost exists, otherwise
+`targetAmount / sourceAmount`. Quotes sort descending by this cost-normalized decimal.js value; exact
+ties use ascending provider ID. Malformed provider-supplied cost data fails closed instead of using
+the fallback silently. A winning `FULL_ALLOWANCE_ASSUMED` Revolut quote is labeled as an indicative
+best-case result, not an exact executable best quote.
+
+The server fetches only:
+
+- `GET https://www.revolut.com/api/exchange/quote`
+- query: `amount`, `country=HU`, `fromCurrency`, `isRecipientAmount=false`, `toCurrency`
+
+The endpoint is publicly accessible and used by Revolut's own converter, but is not a documented or
+supported external personal API. NeoRate sends `Accept: application/json`, `Accept-Language: hu`,
+and an identifying User-Agent only—no `localeCode` query parameter, cookies, authorization, Referer,
+browser identifiers, Sentry/Cloudflare/analytics headers, Business APIs, private app endpoints,
+reciprocal rates, HTML parsing, browser automation, or market fallback.
 
 ## Decimal and rounding rules
 
@@ -124,12 +170,19 @@ The deterministic mock rounds fees and target amounts with `ROUND_HALF_UP` to th
 target conversion. This is not a universal provider policy: future real adapters must implement and
 test the provider's documented rounding direction. See `DECISIONS.md` for the authoritative policy.
 
+The Revolut adapter preserves the endpoint's rate and actual sender/recipient amounts. It calculates
+the effective rate with decimal.js from those returned amounts and normalizes the selected plan's
+`fees.fx`, `fees.total`, and `fees.cost` without reconstructing or rounding the payout. It never
+duplicates the endpoint fee with a manually calculated allowance or weekend fee.
+
 ## Environment variables
 
-| Variable       | Required                       | Purpose                                                                   |
-| -------------- | ------------------------------ | ------------------------------------------------------------------------- |
-| `DATABASE_URL` | For database commands/features | PostgreSQL connection URL; validated lazily before a DB client is created |
-| `LOG_LEVEL`    | No                             | `debug`, `info`, `warn`, or `error`; defaults to `info`                   |
+| Variable                    | Required                       | Purpose                                                                                    |
+| --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`              | For database commands/features | PostgreSQL connection URL; validated lazily before a DB client is created                  |
+| `LOG_LEVEL`                 | No                             | `debug`, `info`, `warn`, or `error`; defaults to `info`                                    |
+| `REVOLUT_ADAPTER_ENABLED`   | No                             | Only exact lowercase `true` enables Revolut; every other value safely disables it          |
+| `REVOLUT_LIVE_TEST_ENABLED` | No                             | Exactly `true` enables the explicit manual endpoint probe; normal tests never call Revolut |
 
 Never commit `.env` files or credentials. `.env.example` contains documentation-only values.
 
@@ -144,6 +197,7 @@ pnpm typecheck        # strict TypeScript validation
 pnpm test             # unit tests once
 pnpm test:watch       # unit tests in watch mode
 pnpm test:coverage    # unit test coverage
+pnpm test:revolut:live # explicit live endpoint probe (requires its environment flag)
 pnpm test:e2e         # future Playwright suite
 pnpm format           # write formatting
 pnpm format:check     # verify formatting
@@ -167,9 +221,16 @@ environment, provision a reachable PostgreSQL database, run migrations as a cont
 step, and deploy with the standard Next.js build command. The health endpoint verifies the web
 process only; database readiness should be added when persistence becomes part of the request path.
 
-Current limitations: only a deterministic mock adapter and an intentionally unavailable example are
-registered. No quote is live or executable, persistence is not yet connected to the quote request
-path, and no external provider integration exists.
+Current limitations: Revolut covers only Hungarian personal EUR/HUF and HUF/EUR and remains disabled
+by default pending staging and legal/product verification. The undocumented endpoint contract may
+change or reject server-side HTTP; that safely becomes unavailable and is negative-cached briefly.
+The 2026-07-13 local probe sent `Accept-Language: hu` and received `200 OK` for three amounts in each
+direction; every response had matching currencies, a positive recipient amount, and a rate timestamp.
+All six responses returned only the `STANDARD` plan, so Plus/Premium/Metal/Ultra requests remain
+unavailable unless the endpoint actually returns their exact plan objects. The adapter assumes the
+public converter's full-allowance plan quote and does not know actual rolling-30-day usage, does not
+model the separately documented conditional Hungarian migration transaction fee, and cannot promise
+the app's executable rounding or total. Persistence is not yet connected to the quote request path.
 
 ## Project context
 

@@ -1,0 +1,60 @@
+{
+  "sender": { "amount": 1000, "currency": "EUR" },
+  "recipient": { "amount": 354879, "currency": "HUF" },
+  "rate": {
+    "from": "EUR",
+    "to": "HUF",
+    "rate": 354.87926170023974,
+    "timestamp": 1783951201280
+  },
+  "fxTooltip": "Indicative public converter quote",
+  "plans": [
+    {
+      "id": "STANDARD",
+      "name": "Standard",
+      "fees": {
+        "fx": { "amount": 0, "currency": "EUR" },
+        "total": { "amount": 0, "currency": "EUR" },
+        "cost": { "amount": 1000, "currency": "EUR" }
+      },
+      "tooltipLong": "No exchange fee is shown for this public quote",
+      "tooltipShort": "No fee"
+    },
+    {
+      "id": "PLUS",
+      "name": "Plus",
+      "fees": {
+        "fx": { "amount": 0, "currency": "EUR" },
+        "total": { "amount": 0, "currency": "EUR" },
+        "cost": { "amount": 1000, "currency": "EUR" }
+      }
+    },
+    {
+      "id": "PREMIUM",
+      "name": "Premium",
+      "fees": {
+        "fx": { "amount": 0, "currency": "EUR" },
+        "total": { "amount": 0, "currency": "EUR" },
+        "cost": { "amount": 1000, "currency": "EUR" }
+      }
+    },
+    {
+      "id": "METAL",
+      "name": "Metal",
+      "fees": {
+        "fx": { "amount": 0, "currency": "EUR" },
+        "total": { "amount": 0, "currency": "EUR" },
+        "cost": { "amount": 1000, "currency": "EUR" }
+      }
+    },
+    {
+      "id": "ULTRA",
+      "name": "Ultra",
+      "fees": {
+        "fx": { "amount": 0, "currency": "EUR" },
+        "total": { "amount": 0, "currency": "EUR" },
+        "cost": { "amount": 1000, "currency": "EUR" }
+      }
+    }
+  ]
+}

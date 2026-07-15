@@ -16,6 +16,11 @@ export const currencyFractionDigits = {
   HUF: 0,
 } as const;
 
+export const currencyMinorUnit = {
+  EUR: "0.01",
+  HUF: "1",
+} as const;
+
 export const minimumSourceAmount = {
   EUR: "0.01",
   HUF: "100",
@@ -33,12 +38,28 @@ export function roundDecimal(value: Decimal.Value, fractionDigits: number): stri
     .toFixed(fractionDigits);
 }
 
+export function roundDownDecimal(value: Decimal.Value, fractionDigits: number): string {
+  return decimal(value).toDecimalPlaces(fractionDigits, Decimal.ROUND_DOWN).toFixed(fractionDigits);
+}
+
+export function decimalToPlainString(value: Decimal.Value): string {
+  return decimal(value).toFixed();
+}
+
 export function compareDecimalStrings(left: string, right: string): number {
   if (!decimalPattern.test(left) || !decimalPattern.test(right)) {
     throw new TypeError("Expected non-negative plain decimal strings");
   }
 
   return decimal(left).comparedTo(decimal(right));
+}
+
+export function isWithinCurrencyMinorUnit(
+  left: Decimal.Value,
+  right: Decimal.Value,
+  currency: SupportedCurrency,
+): boolean {
+  return decimal(left).minus(right).abs().lessThanOrEqualTo(currencyMinorUnit[currency]);
 }
 
 export function isAllowedSourceAmount(value: string): boolean {

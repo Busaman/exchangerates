@@ -13,11 +13,13 @@ export function createProviderUnavailableResult({
   request,
   reason,
   sourceId,
+  sourceUrl,
 }: {
   provider: Provider;
   request: QuoteRequest;
   reason: string;
   sourceId: string;
+  sourceUrl?: string;
 }): UnavailableQuote {
   return unavailableQuoteSchema.parse({
     kind: "unavailable",
@@ -32,6 +34,7 @@ export function createProviderUnavailableResult({
     retrievedAt: request.requestedAt,
     reason,
     sourceId,
+    sourceUrl,
   });
 }
 

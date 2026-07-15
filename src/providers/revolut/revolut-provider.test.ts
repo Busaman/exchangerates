@@ -1,0 +1,202 @@
+import { describe, expect, it, vi } from "vitest";
+import { quoteApiRequestSchema } from "@/domain/quote-api";
+import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
+import type { QuoteRequest } from "@/domain/quote";
+import { runProviderAdapterContract } from "@/providers/provider-adapter.contract";
+import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
+import type {
+  RevolutQuoteClient,
+  RevolutQuoteObservation,
+} from "@/providers/revolut/revolut-quote-client";
+import { RevolutQuoteClientError } from "@/providers/revolut/revolut-quote-client";
+
+const requestedAt = "2026-07-13T16:03:00.000Z";
+const observation: RevolutQuoteObservation = {
+  pair: "HUF-EUR",
+  sourceAmount: "100000",
+  targetAmount: "277.43",
+  rate: "0.0027743132467174",
+  rateTimestamp: "2026-07-13T16:02:51.976Z",
+  retrievedAt: requestedAt,
+  sourceUrl:
+    "https://www.revolut.com/api/exchange/quote?amount=100000&country=HU&fromCurrency=HUF&isRecipientAmount=false&toCurrency=EUR",
+  freshness: "FRESH",
+  plan: "STANDARD",
+  fxFee: { amount: "0", currency: "HUF" },
+  totalFee: { amount: "0", currency: "HUF" },
+  totalSourceCost: { amount: "100000", currency: "HUF" },
+  fxTooltip: "A Revolut nem számít fel díjat",
+  planTooltipLong: "A Revolut nem számít fel díjat",
+  planTooltipShort: "Díjmentes",
+};
+
+function quoteClient(result: RevolutQuoteObservation = observation): RevolutQuoteClient {
+  return { getQuote: vi.fn(async () => result) };
+}
+
+const contractRequest: QuoteRequest = {
+  providerId: "REVOLUT",
+  sourceCurrency: "HUF",
+  targetCurrency: "EUR",
+  sourceAmount: "100000",
+  requestedAt,
+  providerContexts: { REVOLUT: { plan: "STANDARD" } },
+};
+
+runProviderAdapterContract({
+  adapter: new RevolutProviderAdapter({ quoteClient: quoteClient() }),
+  request: contractRequest,
+  expectedKind: "quote",
+});
+
+describe("RevolutProviderAdapter", () => {
+  it("normalizes the selected plan and actual endpoint amounts as LIVE_UNOFFICIAL", async () => {
+    const adapter = new RevolutProviderAdapter({ quoteClient: quoteClient() });
+    const result = await adapter.getQuote(contractRequest, {
+      signal: new AbortController().signal,
+    });
+
+    expect(result).toMatchObject({
+      kind: "quote",
+      sourceType: "LIVE_UNOFFICIAL",
+      customerPlan: "STANDARD",
+      targetAmount: { amount: "277.43", currency: "EUR" },
+      effectiveRate: "0.0027743",
+      rankingEffectiveRate: "0.0027743",
+      explicitFee: { amount: "0", currency: "HUF" },
+      sourceUrl: observation.sourceUrl,
+      providerDetails: {
+        type: "REVOLUT_PERSONAL",
+        plan: "STANDARD",
+        displayedBaseRate: "0.0027743132467174",
+        fxFee: { amount: "0", currency: "HUF" },
+        totalFee: { amount: "0", currency: "HUF" },
+        totalSourceCost: { amount: "100000", currency: "HUF" },
+        allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
+        planTooltipShort: "Díjmentes",
+      },
+    });
+  });
+
+  it("uses an independent EUR to HUF endpoint observation", async () => {
+    const eurObservation: RevolutQuoteObservation = {
+      ...observation,
+      pair: "EUR-HUF",
+      sourceAmount: "1000",
+      targetAmount: "354879",
+      rate: "354.87926170023974",
+      plan: "METAL",
+      fxFee: { amount: "0", currency: "EUR" },
+      totalFee: { amount: "0", currency: "EUR" },
+      totalSourceCost: { amount: "1000", currency: "EUR" },
+      sourceUrl:
+        "https://www.revolut.com/api/exchange/quote?amount=1000&country=HU&fromCurrency=EUR&isRecipientAmount=false&toCurrency=HUF",
+    };
+    const result = await new RevolutProviderAdapter({
+      quoteClient: quoteClient(eurObservation),
+    }).getQuote({
+      ...contractRequest,
+      sourceCurrency: "EUR",
+      targetCurrency: "HUF",
+      sourceAmount: "1000",
+      providerContexts: { REVOLUT: { plan: "METAL" } },
+    });
+
+    expect(result).toMatchObject({
+      kind: "quote",
+      targetAmount: { amount: "354879", currency: "HUF" },
+      providerDetails: { plan: "METAL", displayedBaseRate: "354.87926170023974" },
+    });
+  });
+
+  it("returns no numeric quote when personal plan context is missing", async () => {
+    const client = quoteClient();
+    const result = await new RevolutProviderAdapter({ quoteClient: client }).getQuote({
+      ...contractRequest,
+      providerContexts: undefined,
+    });
+
+    expect(result.kind).toBe("unavailable");
+    expect(result).not.toHaveProperty("targetAmount");
+    expect(client.getQuote).not.toHaveBeenCalled();
+  });
+
+  it("does not substitute any fallback after endpoint failure", async () => {
+    const client: RevolutQuoteClient = {
+      getQuote: vi.fn(async () => Promise.reject(new Error("endpoint unavailable"))),
+    };
+    const result = await new RevolutProviderAdapter({ quoteClient: client }).getQuote(
+      contractRequest,
+    );
+
+    expect(result).toMatchObject({ kind: "unavailable", provider: { id: "REVOLUT" } });
+    expect(result).not.toHaveProperty("effectiveRate");
+  });
+
+  it("returns a plan-specific numeric-field-free reason when the endpoint omits the plan", async () => {
+    const client: RevolutQuoteClient = {
+      getQuote: vi.fn(async () =>
+        Promise.reject(new RevolutQuoteClientError("SELECTED_PLAN_MISSING")),
+      ),
+    };
+    const result = await new RevolutProviderAdapter({ quoteClient: client }).getQuote({
+      ...contractRequest,
+      providerContexts: { REVOLUT: { plan: "PLUS" } },
+    });
+
+    expect(result).toMatchObject({
+      kind: "unavailable",
+      reason: "The public Revolut endpoint did not return the requested PLUS plan.",
+    });
+    expect(result).not.toHaveProperty("targetAmount");
+    expect(result).not.toHaveProperty("rankingEffectiveRate");
+  });
+
+  it("preserves STALE endpoint classification without ranking it live", async () => {
+    const result = await new RevolutProviderAdapter({
+      quoteClient: quoteClient({ ...observation, freshness: "STALE" }),
+    }).getQuote(contractRequest);
+
+    expect(result).toMatchObject({ kind: "quote", status: "STALE", freshness: "STALE" });
+  });
+
+  it("uses endpoint fees once without manually reducing the returned recipient amount", async () => {
+    const result = await new RevolutProviderAdapter({
+      quoteClient: quoteClient({
+        ...observation,
+        sourceAmount: "1100000",
+        targetAmount: "3051.74",
+        fxFee: { amount: "7500", currency: "HUF" },
+        totalFee: { amount: "7500", currency: "HUF" },
+        totalSourceCost: { amount: "1107500", currency: "HUF" },
+      }),
+    }).getQuote({ ...contractRequest, sourceAmount: "1100000" });
+
+    expect(result).toMatchObject({
+      kind: "quote",
+      targetAmount: { amount: "3051.74" },
+      explicitFee: { amount: "7500" },
+      totalCost: { amount: "7500" },
+      providerDetails: { totalSourceCost: { amount: "1107500" } },
+    });
+    expect(result.kind === "quote" ? result.rankingEffectiveRate : null).toBe(
+      calculateRankingEffectiveRate({
+        sourceAmount: { currency: "HUF", amount: "1100000" },
+        targetAmount: { currency: "EUR", amount: "3051.74" },
+        totalSourceCost: { currency: "HUF", amount: "1107500" },
+      }),
+    );
+  });
+
+  it.each(["BUSINESS", "PRO"])("does not accept the %s plan", (plan) => {
+    expect(
+      quoteApiRequestSchema.safeParse({
+        sourceCurrency: "HUF",
+        targetCurrency: "EUR",
+        sourceAmount: "100000",
+        providers: ["REVOLUT"],
+        providerContexts: { REVOLUT: { plan } },
+      }).success,
+    ).toBe(false);
+  });
+});

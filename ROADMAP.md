@@ -10,11 +10,14 @@ Prisma schema, unit test tooling, health endpoint and transparent initial UI.
 The normalized quote/error union, decimal.js calculations, deterministic mock, unavailable example,
 adapter contract suite, registry, timeout isolation and regression tests are complete.
 
-## 3. Official or legally reliable provider integrations — next
+## 3. Official or legally reliable provider integrations — in progress
 
-Evaluate Wise, Revolut, ZEN and PayPal sources independently. Record terms, authentication, limits,
-plans, timestamps and reliability before implementing any adapter. Investigate Gránit Bank only if a
-reliable legal source is identified.
+The first adapter is implemented but disabled by default for Hungarian personal Revolut EUR/HUF and
+HUF/EUR using the public JSON endpoint used by Revolut's official converter, strict validation,
+explicit `LIVE_UNOFFICIAL` labeling and no fallback. The validated environment gate, per-provider
+timeout, amount/plan-aware cache, negative cache and single-flight control are complete. It remains
+operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
+after source/legal review. Investigate Gránit Bank only if a reliable legal source is identified.
 
 ## 4. Historical rate storage — planned
 
@@ -41,7 +44,10 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Research and document the first real provider integration candidate. Evaluate official API/legal
-source availability, terms, authentication, rate limits, supported plans/directions, timestamp and
-fee semantics, data retention and fallback behavior. Produce an ADR and sanitized contract-fixture
-plan before writing any live adapter code.**
+**Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
+`Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed
+only `STANDARD`; verify whether and under which public request semantics the other four personal plans
+are returned. Then verify below/above-allowance amounts, weekday/weekend behavior, latency,
+rate-limit/error rates, cache transitions and response-contract stability. Obtain legal/product
+approval for the undocumented JSON endpoint before production enablement; add telemetry without a
+fallback.**

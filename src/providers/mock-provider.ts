@@ -6,6 +6,7 @@ import {
   type QuoteRequest,
 } from "@/domain/quote";
 import { currencyFractionDigits, decimal, roundDecimal } from "@/domain/decimal";
+import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 
@@ -40,6 +41,10 @@ export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
     decimal(targetAmount).dividedBy(sourceAmount),
     effectiveRateFractionDigits,
   );
+  const rankingEffectiveRate = calculateRankingEffectiveRate({
+    sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
+    targetAmount: { currency: request.targetCurrency, amount: targetAmount },
+  });
 
   return availableQuoteSchema.parse({
     kind: "quote",
@@ -52,6 +57,7 @@ export function createMockQuote(requestInput: QuoteRequest): AvailableQuote {
     sourceAmount: { currency: request.sourceCurrency, amount: request.sourceAmount },
     targetAmount: { currency: request.targetCurrency, amount: targetAmount },
     effectiveRate,
+    rankingEffectiveRate,
     explicitFee: { currency: request.sourceCurrency, amount: fee },
     totalCost: { currency: request.sourceCurrency, amount: fee },
     rateTimestamp: request.requestedAt,

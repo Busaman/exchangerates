@@ -14,7 +14,7 @@ export default function HomePage() {
           </span>
         </a>
         <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-200">
-          Alapozási fázis · nem élő adatok
+          Kísérleti fázis · indikatív adatok
         </span>
       </header>
 
@@ -27,7 +27,8 @@ export default function HomePage() {
         </h1>
         <p className="mt-5 max-w-2xl text-pretty text-base leading-7 text-slate-300 sm:text-lg">
           A NeoRate célja a szolgáltatói árfolyamok, árrések és díjak egyértelmű, visszakövethető
-          összevetése. Ez a kezdeti felület kizárólag determinisztikus tesztadatot mutat.
+          összevetése. A Revolut nyilvános oldali adata kísérleti és indikatív; a mock adat külön
+          jelölést kap, a végrehajtható ajánlatot pedig mindig az appban kell ellenőrizni.
         </p>
       </section>
 
