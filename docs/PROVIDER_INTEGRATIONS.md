@@ -175,3 +175,26 @@ zero, or wrong-currency supplied cost is invalid rather than silently ignored. A
 `FULL_ALLOWANCE_ASSUMED` remains visible but is an optimistic best-case quote. Only an eligible
 weekday result can receive the explicitly qualified badge; an incomplete-fee row receives no best
 badge even when its numeric payout is largest. Final app verification remains mandatory.
+
+## Wise comparison endpoint — investigation only
+
+Wise is not a registered NeoRate provider. The 2026-07-16 investigation of
+`GET https://wise.com/gateway/v4/comparisons` produced a `PROCEED_WITH_RESTRICTIONS` verdict, not
+adapter approval. Minimal server-side requests worked without cookies, authorization, browser
+identifiers, or `x-access-token`, and both supported directions produced mathematically consistent
+comparison results for the tested supported amounts. However, 100 HUF returned HTTP 200 without a
+Wise provider, the contract is undocumented, and the result is not proven account- or
+payment-method-specific.
+
+Any future client must conservatively send `sourceCountry=HU`, `filter=POPULAR`,
+`includeWise=true`, and `numberOfProviders=3`; select only exact `alias === "wise"`; require exactly
+one understandable quote; validate decimal reconciliation and timestamp age; and fail closed when
+the provider is absent even on HTTP 200. Other providers returned by Wise's comparison endpoint are
+not authoritative integration sources for NeoRate.
+
+The isolated parser and sanitized fixtures under `src/providers/wise` make no network calls and are
+not connected to the provider registry, API, UI, or ranking. The opt-in
+`pnpm investigate:wise` command is never run by normal CI. Read
+[`WISE_ENDPOINT_INVESTIGATION.md`](./WISE_ENDPOINT_INVESTIGATION.md) before proposing a separate
+`LIVE_UNOFFICIAL` adapter. Legal/product review, staging evidence, explicit indicative labeling, and
+a conservative initial 60-second cache are required first.
