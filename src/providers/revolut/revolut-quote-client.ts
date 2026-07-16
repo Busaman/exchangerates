@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { decimal, decimalToPlainString } from "@/domain/decimal";
+import { getRuntimeEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import {
   revolutPersonalPlanSchema,
   supportedCurrencyCodeSchema,
@@ -116,10 +118,56 @@ export type RevolutPublicQuoteClientDependencies = Readonly<{
   freshCacheMs?: number;
   negativeCacheMs?: number;
   staleCacheMs?: number;
+  measureNow?: () => number;
+  recordEvent?: (event: RevolutOperationalEvent) => void;
+}>;
+
+export type RevolutCacheOutcome =
+  "MISS" | "FRESH_HIT" | "NEGATIVE_HIT" | "STALE_HIT" | "SINGLE_FLIGHT_JOIN";
+
+export type RevolutOperationalEvent = Readonly<{
+  event: "QUOTE_REQUEST" | "CACHE" | "OUTBOUND";
+  pair: RevolutPairKey;
+  plan: RevolutPersonalPlan;
+  amountBucket: string;
+  cacheOutcome?: RevolutCacheOutcome;
+  durationMs?: number;
+  statusCode?: number;
+  statusCategory?: "2xx" | "3xx" | "4xx" | "5xx" | "NETWORK";
+  outcome?: "SUCCESS" | "FAILURE";
+  failureCode?: string;
+  schemaValidated?: boolean;
 }>;
 
 type CachedObservation = Omit<RevolutQuoteObservation, "freshness">;
 type CachedFailure = Readonly<{ error: RevolutQuoteClientError; expiresAt: number }>;
+
+function amountBucket(request: RevolutQuoteRequest): string {
+  const amount = decimal(request.sourceAmount);
+  if (request.pair === "EUR-HUF") {
+    if (amount.lessThan(100)) return "EUR_LT_100";
+    if (amount.lessThan(1_000)) return "EUR_100_TO_999";
+    if (amount.lessThan(10_000)) return "EUR_1K_TO_9K";
+    return "EUR_GTE_10K";
+  }
+  if (amount.lessThan(10_000)) return "HUF_LT_10K";
+  if (amount.lessThan(100_000)) return "HUF_10K_TO_99K";
+  if (amount.lessThan(1_000_000)) return "HUF_100K_TO_999K";
+  return "HUF_GTE_1M";
+}
+
+function statusCategory(statusCode: number | undefined): RevolutOperationalEvent["statusCategory"] {
+  if (statusCode === undefined) return "NETWORK";
+  if (statusCode < 300) return "2xx";
+  if (statusCode < 400) return "3xx";
+  if (statusCode < 500) return "4xx";
+  return "5xx";
+}
+
+function defaultRecordEvent(event: RevolutOperationalEvent): void {
+  if (getRuntimeEnv().NODE_ENV === "test") return;
+  logger.info("Revolut operational metric", { providerId: "REVOLUT", ...event });
+}
 
 function plainDecimal(value: string | number, code: string, positive: boolean): string {
   try {
@@ -380,6 +428,8 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
   readonly #freshCacheMs: number;
   readonly #negativeCacheMs: number;
   readonly #staleCacheMs: number;
+  readonly #measureNow: () => number;
+  readonly #recordEvent: (event: RevolutOperationalEvent) => void;
   readonly #cache = new Map<string, CachedObservation>();
   readonly #failures = new Map<string, CachedFailure>();
   readonly #inFlight = new Map<string, Promise<RevolutQuoteObservation>>();
@@ -393,6 +443,8 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
     this.#negativeCacheMs =
       dependencies.negativeCacheMs ?? revolutQuoteClientConfig.negativeCacheMs;
     this.#staleCacheMs = dependencies.staleCacheMs ?? revolutQuoteClientConfig.staleCacheMs;
+    this.#measureNow = dependencies.measureNow ?? Date.now;
+    this.#recordEvent = dependencies.recordEvent ?? defaultRecordEvent;
   }
 
   async getQuote(
@@ -408,6 +460,12 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
       }
       throw error;
     }
+    const eventContext = {
+      pair: request.pair,
+      plan: request.plan,
+      amountBucket: amountBucket(request),
+    } as const;
+    this.#recordEvent({ event: "QUOTE_REQUEST", ...eventContext });
     const requestTime = this.#now();
     const cached = this.#cache.get(key);
     if (cached !== undefined) {
@@ -417,21 +475,30 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
         cacheAge <= this.#freshCacheMs &&
         sourceAge <= revolutQuoteClientConfig.maximumSourceObservationAgeMs
       ) {
+        this.#recordEvent({ event: "CACHE", cacheOutcome: "FRESH_HIT", ...eventContext });
         return { ...cached, freshness: "FRESH" };
       }
     }
 
     const cachedFailure = this.#failures.get(key);
     if (cachedFailure !== undefined && requestTime.getTime() < cachedFailure.expiresAt) {
+      this.#recordEvent({ event: "CACHE", cacheOutcome: "NEGATIVE_HIT", ...eventContext });
       const stale = this.#staleObservation(cached, requestTime);
-      if (stale !== undefined) return stale;
+      if (stale !== undefined) {
+        this.#recordEvent({ event: "CACHE", cacheOutcome: "STALE_HIT", ...eventContext });
+        return stale;
+      }
       throw cachedFailure.error;
     }
     if (cachedFailure !== undefined) this.#failures.delete(key);
 
     const existingRequest = this.#inFlight.get(key);
-    if (existingRequest !== undefined) return existingRequest;
+    if (existingRequest !== undefined) {
+      this.#recordEvent({ event: "CACHE", cacheOutcome: "SINGLE_FLIGHT_JOIN", ...eventContext });
+      return existingRequest;
+    }
 
+    this.#recordEvent({ event: "CACHE", cacheOutcome: "MISS", ...eventContext });
     const pending = this.#refresh(request, cached, signal);
     this.#inFlight.set(key, pending);
     try {
@@ -461,6 +528,8 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
     let lastError: RevolutQuoteClientError = publicError("QUOTE_UNAVAILABLE");
 
     for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+      const startedAt = this.#measureNow();
+      let responseStatus: number | undefined;
       try {
         const response = await fetchWithTimeout({
           fetcher: this.#fetch,
@@ -468,6 +537,7 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
           parentSignal: signal,
           timeoutMs: this.#timeoutMs,
         });
+        responseStatus = response.status;
         if (response.status >= 300 && response.status < 400) {
           throw publicError("UNEXPECTED_REDIRECT");
         }
@@ -502,10 +572,33 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
         const cachedObservation: CachedObservation = observation;
         this.#cache.set(key, cachedObservation);
         this.#failures.delete(key);
+        this.#recordEvent({
+          event: "OUTBOUND",
+          pair: request.pair,
+          plan: request.plan,
+          amountBucket: amountBucket(request),
+          durationMs: Math.max(0, this.#measureNow() - startedAt),
+          statusCode: responseStatus,
+          statusCategory: statusCategory(responseStatus),
+          outcome: "SUCCESS",
+          schemaValidated: true,
+        });
         return observation;
       } catch (error) {
         lastError =
           error instanceof RevolutQuoteClientError ? error : publicError("NETWORK_FAILURE", true);
+        this.#recordEvent({
+          event: "OUTBOUND",
+          pair: request.pair,
+          plan: request.plan,
+          amountBucket: amountBucket(request),
+          durationMs: Math.max(0, this.#measureNow() - startedAt),
+          ...(responseStatus === undefined ? {} : { statusCode: responseStatus }),
+          statusCategory: statusCategory(responseStatus),
+          outcome: "FAILURE",
+          failureCode: lastError.code,
+          schemaValidated: false,
+        });
         if (signal?.aborted === true || !lastError.retryable) break;
         const backoff = revolutQuoteClientConfig.retryBackoffMs[attempt];
         if (backoff !== undefined) await this.#sleep(backoff, signal);
@@ -518,7 +611,16 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
       expiresAt: this.#now().getTime() + this.#negativeCacheMs,
     });
     const stale = this.#staleObservation(cached, this.#now());
-    if (stale !== undefined) return stale;
+    if (stale !== undefined) {
+      this.#recordEvent({
+        event: "CACHE",
+        pair: request.pair,
+        plan: request.plan,
+        amountBucket: amountBucket(request),
+        cacheOutcome: "STALE_HIT",
+      });
+      return stale;
+    }
     throw lastError;
   }
 }

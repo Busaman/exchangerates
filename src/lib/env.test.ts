@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { quoteApiResponseSchema } from "@/domain/quote-api";
-import { resolveRevolutAdapterEnabled } from "@/lib/env";
+import {
+  defaultRevolutFreshCacheMs,
+  resolveRevolutAdapterEnabled,
+  resolveRevolutFreshCacheMs,
+} from "@/lib/env";
 import { createProviderRegistry } from "@/providers/provider-registry";
 
 afterEach(() => {
@@ -8,6 +12,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.resetModules();
+});
+
+describe("Revolut fresh-cache configuration", () => {
+  it.each([
+    [undefined, defaultRevolutFreshCacheMs, 0],
+    ["", defaultRevolutFreshCacheMs, 0],
+    ["60000", 60_000, 0],
+    ["30000", 30_000, 0],
+    ["15000", 15_000, 0],
+    ["14999", defaultRevolutFreshCacheMs, 1],
+    ["0", defaultRevolutFreshCacheMs, 1],
+    ["-1", defaultRevolutFreshCacheMs, 1],
+    ["yes", defaultRevolutFreshCacheMs, 1],
+    ["300001", defaultRevolutFreshCacheMs, 1],
+  ] as const)("resolves %s safely", (value, expected, warnings) => {
+    const warn = vi.fn();
+
+    expect(resolveRevolutFreshCacheMs(value, warn)).toBe(expected);
+    expect(warn).toHaveBeenCalledTimes(warnings);
+  });
 });
 
 describe("Revolut experimental feature gate", () => {

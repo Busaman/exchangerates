@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:revolut:live": "node scripts/revolut-live-probe.mjs",
+    "test:revolut:staging": "node scripts/revolut-staging-experiment.mjs",
     "test:e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -10,6 +10,8 @@ import {
   sourceSideFeePercentageBasis,
 } from "@/domain/fee-percentage";
 import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
+import { getRuntimeEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import type { ProviderAdapter, ProviderAdapterContext } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 import { buildRevolutQuoteUrl, revolutPairKey } from "@/providers/revolut/revolut-config";
@@ -121,6 +123,17 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       senderAmount: request.sourceAmount,
     });
     const feeCoverage = evaluateRevolutFeeCoverage({ at: new Date(request.requestedAt) });
+
+    if (getRuntimeEnv().NODE_ENV !== "test") {
+      logger.info("Revolut quote normalized", {
+        providerId: "REVOLUT",
+        pair,
+        plan: personalContext.plan,
+        freshness: observation.freshness,
+        rankingStatus: feeCoverage.rankingStatus,
+        rankingExclusionReason: feeCoverage.rankingExclusionReason,
+      });
+    }
 
     return availableQuoteSchema.parse({
       kind: "quote",

@@ -201,3 +201,19 @@ through Sunday 18:00 ET, classified with `America/New_York`, every Revolut plan 
 but `EXCLUDED_INCOMPLETE_FEES` with reason `WEEKEND_FEE_UNVERIFIED`. This rule follows daylight-saving
 transitions and must remain until controlled weekend evidence supports a narrower policy. App
 verification remains required in every case.
+
+## ADR-012 — Revolut staging cache configuration and operational evidence
+
+**Decision:** Keep the Revolut positive cache provider-local and in-process. Allow a staging-only
+override through `REVOLUT_FRESH_CACHE_MS`, with a safe default of `60000`, an explicit floor of
+`15000`, and a ceiling of `300000` milliseconds. Missing, empty, malformed, non-integer, zero,
+negative or out-of-range values fall back to 60 seconds and may emit a server warning. The setting
+does not change the 30-second negative cache, 15-minute stale ceiling, other providers or the
+default-off Revolut feature gate.
+
+Structured staging events record status category, duration, cache outcome, pair, plan, failure code,
+freshness and ranking exclusion. Exact amounts, raw responses, cookies, authorization, browser
+identifiers and personal data are not logged; amounts use broad buckets. Because Vercel function
+instances do not share this cache, staging results must report instance-local behavior and cannot be
+treated as proof of a global cache hit ratio. The controlled evidence and interval recommendation
+are maintained in `docs/REVOLUT_STAGING_VALIDATION.md`.

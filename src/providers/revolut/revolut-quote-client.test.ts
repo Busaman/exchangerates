@@ -4,6 +4,7 @@ import { revolutQuoteClientConfig } from "@/providers/revolut/revolut-config";
 import {
   parseRevolutQuoteResponse,
   RevolutPublicQuoteClient,
+  type RevolutOperationalEvent,
   type RevolutQuoteRequest,
 } from "@/providers/revolut/revolut-quote-client";
 
@@ -338,6 +339,65 @@ describe("parseRevolutQuoteResponse", () => {
 });
 
 describe("RevolutPublicQuoteClient", () => {
+  it("emits non-sensitive request, cache, and outbound success metrics", async () => {
+    const events: RevolutOperationalEvent[] = [];
+    const client = new RevolutPublicQuoteClient({
+      fetch: async () => response(),
+      now: () => hufObservedAt,
+      measureNow: (() => {
+        const values = [100, 125];
+        return () => values.shift() ?? 125;
+      })(),
+      recordEvent: (event) => events.push(event),
+    });
+
+    await client.getQuote(hufRequest);
+    await client.getQuote(hufRequest);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "QUOTE_REQUEST",
+          pair: "HUF-EUR",
+          plan: "STANDARD",
+          amountBucket: "HUF_100K_TO_999K",
+        }),
+        expect.objectContaining({ event: "CACHE", cacheOutcome: "MISS" }),
+        expect.objectContaining({
+          event: "OUTBOUND",
+          statusCode: 200,
+          statusCategory: "2xx",
+          durationMs: 25,
+          schemaValidated: true,
+        }),
+        expect.objectContaining({ event: "CACHE", cacheOutcome: "FRESH_HIT" }),
+      ]),
+    );
+    expect(JSON.stringify(events)).not.toContain("100000");
+  });
+
+  it("emits sanitized outbound failure status and code", async () => {
+    const events: RevolutOperationalEvent[] = [];
+    const client = new RevolutPublicQuoteClient({
+      fetch: async () => response("forbidden", { status: 403 }),
+      now: () => hufObservedAt,
+      recordEvent: (event) => events.push(event),
+    });
+
+    await expect(client.getQuote(hufRequest)).rejects.toThrow("HTTP_403");
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: "OUTBOUND",
+        statusCode: 403,
+        statusCategory: "4xx",
+        outcome: "FAILURE",
+        failureCode: "HTTP_403",
+        schemaValidated: false,
+      }),
+    );
+  });
+
   it("sends only the allowlisted query and non-deceptive JSON headers", async () => {
     const fetcher = vi.fn<(input: string, init: RequestInit) => Promise<Response>>(async () =>
       response(),
