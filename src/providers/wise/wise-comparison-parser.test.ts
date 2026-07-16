@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decimal } from "@/domain/decimal";
+import { providerIdentifierSchema } from "@/domain/quote";
 import eurHufFixture from "@/providers/wise/fixtures/eur-huf-comparison.json";
 import hufEurFixture from "@/providers/wise/fixtures/huf-eur-comparison.json";
 import {
@@ -27,6 +28,22 @@ function parseHuf(payload: unknown = hufEurFixture) {
     payload,
     request: hufRequest,
   });
+}
+
+function hufPayloadWithQuotes(quotes: ReadonlyArray<unknown>) {
+  const provider = hufEurFixture.providers[0];
+  if (provider === undefined) throw new Error("Invalid HUF/EUR test fixture provider");
+
+  return {
+    ...hufEurFixture,
+    providers: [{ ...provider, quotes: [...quotes] }],
+  };
+}
+
+function hufPayloadWithQuote(overrides: Readonly<Record<string, unknown>>) {
+  const quote = hufEurFixture.providers[0]?.quotes[0];
+  if (quote === undefined) throw new Error("Invalid HUF/EUR test fixture quote");
+  return hufPayloadWithQuotes([{ ...quote, ...overrides }]);
 }
 
 describe("parseWiseComparisonResponse", () => {
@@ -78,12 +95,12 @@ describe("parseWiseComparisonResponse", () => {
         ],
       }),
     ).toThrow("WISE_PROVIDER_NOT_UNIQUE");
-    expect(() =>
-      parseHuf({
-        ...hufEurFixture,
-        providers: [{ ...hufEurFixture.providers[0], quotes: [] }],
-      }),
-    ).toThrow("WISE_QUOTE_COUNT_UNSUPPORTED");
+    expect(() => parseHuf(hufPayloadWithQuotes([]))).toThrow("WISE_QUOTE_COUNT_UNSUPPORTED");
+    const quote = hufEurFixture.providers[0]?.quotes[0];
+    if (quote === undefined) throw new Error("Invalid HUF/EUR test fixture quote");
+    expect(() => parseHuf(hufPayloadWithQuotes([quote, quote]))).toThrow(
+      "WISE_QUOTE_COUNT_UNSUPPORTED",
+    );
   });
 
   it("fails closed for malformed, mismatched and non-positive values", () => {
@@ -95,42 +112,48 @@ describe("parseWiseComparisonResponse", () => {
     expect(() => parseHuf({ ...hufEurFixture, sourceCountry: null })).toThrow(
       "SOURCE_COUNTRY_MISMATCH",
     );
+    expect(() => parseHuf(hufPayloadWithQuote({ sourceCountry: "DE" }))).toThrow(
+      "QUOTE_SOURCE_COUNTRY_MISMATCH",
+    );
+    expect(() => parseHuf(hufPayloadWithQuote({ fee: -1 }))).toThrow("NEGATIVE_FEE");
+    expect(() => parseHuf({ ...hufEurFixture, sourceCountry: "hu" })).toThrow("MALFORMED_RESPONSE");
+    expect(() => parseHuf(hufPayloadWithQuote({ sourceCountry: "hu" }))).toThrow(
+      "MALFORMED_WISE_QUOTE",
+    );
+  });
+
+  it("rejects non-positive quote values and negative markup with precise codes", () => {
+    expect(() => parseHuf(hufPayloadWithQuote({ rate: 0 }))).toThrow("NON_POSITIVE_RATE");
+    expect(() => parseHuf(hufPayloadWithQuote({ receivedAmount: 0 }))).toThrow(
+      "NON_POSITIVE_RECEIVED_AMOUNT",
+    );
+    expect(() => parseHuf(hufPayloadWithQuote({ markup: -0.01 }))).toThrow("NEGATIVE_MARKUP");
+  });
+
+  it("rejects identical currencies and malformed request decimals", () => {
     expect(() =>
-      parseHuf({
-        ...hufEurFixture,
-        providers: [
-          {
-            ...hufEurFixture.providers[0],
-            quotes: [{ ...hufEurFixture.providers[0].quotes[0], sourceCountry: "DE" }],
-          },
-        ],
+      parseWiseComparisonResponse({
+        observedAt: new Date("2026-07-16T18:44:00Z"),
+        payload: hufEurFixture,
+        request: { ...hufRequest, targetCurrency: "HUF" },
       }),
-    ).toThrow("QUOTE_SOURCE_COUNTRY_MISMATCH");
+    ).toThrow("IDENTICAL_CURRENCIES");
     expect(() =>
-      parseHuf({
-        ...hufEurFixture,
-        providers: [
-          {
-            ...hufEurFixture.providers[0],
-            quotes: [{ ...hufEurFixture.providers[0].quotes[0], fee: -1 }],
-          },
-        ],
+      parseWiseComparisonResponse({
+        observedAt: new Date("2026-07-16T18:44:00Z"),
+        payload: hufEurFixture,
+        request: { ...hufRequest, sendAmount: "not-a-decimal" },
       }),
-    ).toThrow("NEGATIVE_FEE");
+    ).toThrow("INVALID_DECIMAL_VALUE");
   });
 
   it("rejects mathematical mismatches and stale or future timestamps", () => {
-    expect(() =>
-      parseHuf({
-        ...hufEurFixture,
-        providers: [
-          {
-            ...hufEurFixture.providers[0],
-            quotes: [{ ...hufEurFixture.providers[0].quotes[0], receivedAmount: 2700 }],
-          },
-        ],
-      }),
-    ).toThrow("MATHEMATICAL_MISMATCH");
+    expect(() => parseHuf(hufPayloadWithQuote({ receivedAmount: 2700 }))).toThrow(
+      "MATHEMATICAL_MISMATCH",
+    );
+    expect(() => parseHuf(hufPayloadWithQuote({ dateCollected: "not-a-timestamp" }))).toThrow(
+      "INVALID_QUOTE_TIMESTAMP",
+    );
     expect(() =>
       parseWiseComparisonResponse({
         observedAt: new Date("2026-07-16T19:00:00Z"),
@@ -147,8 +170,8 @@ describe("parseWiseComparisonResponse", () => {
     ).toThrow("FUTURE_QUOTE_TIMESTAMP");
   });
 
-  it("does not register Wise or perform network access", () => {
-    expect(JSON.stringify(hufEurFixture)).toContain('"alias":"wise"');
-    expect(parseHuf().providerAlias).toBe("wise");
+  it("keeps Wise outside the runtime provider identifier contract", () => {
+    expect(providerIdentifierSchema.options).not.toContain("WISE");
+    expect(providerIdentifierSchema.safeParse("WISE").success).toBe(false);
   });
 });

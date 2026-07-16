@@ -3,12 +3,16 @@ import type Decimal from "decimal.js";
 import { decimal as createDecimal } from "@/domain/decimal";
 
 const currencySchema = z.enum(["EUR", "HUF"]);
-const countrySchema = z.string().min(2).max(2).nullable();
+const countrySchema = z
+  .string()
+  .regex(/^[A-Z]{2}$/)
+  .nullable();
 const finiteNumberSchema = z.number().finite();
+const isoTimestampSchema = z.iso.datetime();
 
 const wiseQuoteSchema = z
   .object({
-    dateCollected: z.iso.datetime(),
+    dateCollected: z.string().min(1),
     fee: finiteNumberSchema,
     isConsideredMidMarketRate: z.boolean(),
     markup: finiteNumberSchema,
@@ -103,6 +107,21 @@ function parseDecimal(value: number | string): Decimal {
   }
 }
 
+function selectWiseProvider(
+  providers: ReadonlyArray<z.infer<typeof comparisonProviderSchema>>,
+): z.infer<typeof comparisonProviderSchema> {
+  let selectedProvider: z.infer<typeof comparisonProviderSchema> | undefined;
+
+  for (const provider of providers) {
+    if (provider.alias !== "wise") continue;
+    if (selectedProvider !== undefined) fail("WISE_PROVIDER_NOT_UNIQUE");
+    selectedProvider = provider;
+  }
+
+  if (selectedProvider === undefined) fail("WISE_PROVIDER_MISSING");
+  return selectedProvider;
+}
+
 export function parseWiseComparisonResponse({
   observedAt = new Date(),
   payload,
@@ -124,21 +143,19 @@ export function parseWiseComparisonResponse({
     fail("CURRENCY_MISMATCH");
   }
   if (response.amountType !== "SEND") fail("UNSUPPORTED_AMOUNT_TYPE");
+  // Investigation-only probes may accept null to study omitted-country behavior. Evidence for a
+  // future Hungarian adapter intentionally requires the exact requested country here.
   if (request.sourceCountry !== undefined && response.sourceCountry !== request.sourceCountry) {
     fail("SOURCE_COUNTRY_MISMATCH");
   }
 
   const requestAmount = parseDecimal(request.sendAmount);
   const responseAmount = parseDecimal(response.amount);
-  if (!requestAmount.isPositive() || !responseAmount.equals(requestAmount)) {
+  if (!requestAmount.greaterThan(0) || !responseAmount.equals(requestAmount)) {
     fail("AMOUNT_MISMATCH");
   }
 
-  const wiseProviders = response.providers.filter((provider) => provider.alias === "wise");
-  if (wiseProviders.length === 0) fail("WISE_PROVIDER_MISSING");
-  if (wiseProviders.length > 1) fail("WISE_PROVIDER_NOT_UNIQUE");
-  const provider = wiseProviders[0];
-  if (provider === undefined) fail("WISE_PROVIDER_MISSING");
+  const provider = selectWiseProvider(response.providers);
   if (provider.quotes.length !== 1) fail("WISE_QUOTE_COUNT_UNSUPPORTED");
 
   const quoteResult = wiseQuoteSchema.safeParse(provider.quotes[0]);
@@ -152,12 +169,12 @@ export function parseWiseComparisonResponse({
   const receivedAmount = parseDecimal(quote.receivedAmount);
   const markup = parseDecimal(quote.markup);
   if (fee.isNegative()) fail("NEGATIVE_FEE");
-  if (!rate.isPositive()) fail("NON_POSITIVE_RATE");
-  if (!receivedAmount.isPositive()) fail("NON_POSITIVE_RECEIVED_AMOUNT");
+  if (!rate.greaterThan(0)) fail("NON_POSITIVE_RATE");
+  if (!receivedAmount.greaterThan(0)) fail("NON_POSITIVE_RECEIVED_AMOUNT");
   if (markup.isNegative()) fail("NEGATIVE_MARKUP");
 
   const convertedSourceAmount = responseAmount.minus(fee);
-  if (!convertedSourceAmount.isPositive()) fail("NON_POSITIVE_CONVERTED_AMOUNT");
+  if (!convertedSourceAmount.greaterThan(0)) fail("NON_POSITIVE_CONVERTED_AMOUNT");
   const expectedReceivedAmount = convertedSourceAmount.times(rate);
   const mathematicalDifference = expectedReceivedAmount.minus(receivedAmount).abs();
   const tolerance = parseDecimal(
@@ -166,7 +183,12 @@ export function parseWiseComparisonResponse({
   if (mathematicalDifference.greaterThan(tolerance)) fail("MATHEMATICAL_MISMATCH");
 
   const collectedAtMs = Date.parse(quote.dateCollected);
-  if (!Number.isFinite(collectedAtMs)) fail("INVALID_QUOTE_TIMESTAMP");
+  if (
+    !isoTimestampSchema.safeParse(quote.dateCollected).success ||
+    !Number.isFinite(collectedAtMs)
+  ) {
+    fail("INVALID_QUOTE_TIMESTAMP");
+  }
   const ageMs = observedAt.getTime() - collectedAtMs;
   if (ageMs < -wiseComparisonInvestigationPolicy.futureToleranceMs) {
     fail("FUTURE_QUOTE_TIMESTAMP");

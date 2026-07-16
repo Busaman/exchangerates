@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 import { z } from "zod";
+import { classifyWiseExpectation } from "./wise-investigation-expectation.mjs";
 
 if (process.env.WISE_INVESTIGATION_ENABLED !== "true") {
   console.error("Set WISE_INVESTIGATION_ENABLED=true to run live Wise investigation requests.");
@@ -21,6 +22,10 @@ const userAgent = "NeoRate technical investigation";
 const frontendToken = process.env.WISE_FRONTEND_TOKEN;
 
 const finiteNumber = z.number().finite();
+const countrySchema = z
+  .string()
+  .regex(/^[A-Z]{2}$/)
+  .nullable();
 const quoteSchema = z
   .object({
     dateCollected: z.iso.datetime(),
@@ -30,8 +35,8 @@ const quoteSchema = z
     rate: finiteNumber,
     receivedAmount: finiteNumber,
     sendAmount: finiteNumber.nullable().optional(),
-    sourceCountry: z.string().nullable(),
-    targetCountry: z.string().nullable(),
+    sourceCountry: countrySchema,
+    targetCountry: countrySchema,
   })
   .passthrough();
 const providerSchema = z
@@ -47,9 +52,9 @@ const responseSchema = z
     amount: finiteNumber,
     amountType: z.string(),
     providers: z.array(providerSchema),
-    sourceCountry: z.string().nullable(),
+    sourceCountry: countrySchema,
     sourceCurrency: z.string(),
-    targetCountry: z.string().nullable().optional(),
+    targetCountry: countrySchema.optional(),
     targetCurrency: z.string(),
   })
   .passthrough();
@@ -115,7 +120,11 @@ function validate(payload, request, observedAt) {
 
   const amount = new Decimal(String(response.amount));
   const requestedAmount = new Decimal(request.sendAmount);
-  if (!amount.equals(requestedAmount)) throw new Error("AMOUNT_MISMATCH");
+  if (!requestedAmount.greaterThan(0) || !amount.equals(requestedAmount)) {
+    throw new Error("AMOUNT_MISMATCH");
+  }
+  // Investigation variants tolerate null country metadata so omitted-country behavior remains
+  // observable. The isolated parser is strict, and a future Hungarian adapter must stay strict.
   if (
     request.sourceCountry !== null &&
     response.sourceCountry !== null &&
@@ -149,12 +158,12 @@ function validate(payload, request, observedAt) {
   const receivedAmount = new Decimal(String(quote.receivedAmount));
   const markup = new Decimal(String(quote.markup));
   if (fee.isNegative()) throw new Error("NEGATIVE_FEE");
-  if (!rate.isPositive()) throw new Error("NON_POSITIVE_RATE");
-  if (!receivedAmount.isPositive()) throw new Error("NON_POSITIVE_RECEIVED_AMOUNT");
+  if (!rate.greaterThan(0)) throw new Error("NON_POSITIVE_RATE");
+  if (!receivedAmount.greaterThan(0)) throw new Error("NON_POSITIVE_RECEIVED_AMOUNT");
   if (markup.isNegative()) throw new Error("NEGATIVE_MARKUP");
 
   const convertedSourceAmount = amount.minus(fee);
-  if (!convertedSourceAmount.isPositive()) throw new Error("NON_POSITIVE_CONVERTED_AMOUNT");
+  if (!convertedSourceAmount.greaterThan(0)) throw new Error("NON_POSITIVE_CONVERTED_AMOUNT");
   const expectedReceivedAmount = convertedSourceAmount.times(rate);
   const mathematicalDifference = expectedReceivedAmount.minus(receivedAmount).abs();
   const tolerance = new Decimal(request.targetCurrency === "EUR" ? "0.01" : "1");
@@ -237,6 +246,12 @@ async function probe({ expectWise = true, headers = baseHeaders, label, params }
       throw new Error("MALFORMED_JSON");
     }
     const validated = validate(payload, params, observedAt);
+    const classification = classifyWiseExpectation({
+      expectWise,
+      wisePresent: validated.wisePresent,
+    });
+    const { failureCount, ...classificationFields } = classification;
+    failures += failureCount;
     const commonRecord = {
       cacheHeaders: {
         age: response.headers.get("age"),
@@ -252,21 +267,11 @@ async function probe({ expectWise = true, headers = baseHeaders, label, params }
       sourceCountry: params.sourceCountry,
       sourceCurrency: params.sourceCurrency,
       targetCurrency: params.targetCurrency,
-      validationResult: validated.wisePresent || expectWise ? "PASS" : "EXPECTED_WISE_ABSENT",
       wisePresent: validated.wisePresent,
       ...(validated.evidence ?? {}),
       quoteAgeMs: validated.quoteAgeMs ?? null,
     };
-    if (expectWise && !validated.wisePresent) {
-      failures += 1;
-      record = {
-        ...commonRecord,
-        failureCode: "WISE_PROVIDER_MISSING",
-        validationResult: "FAIL",
-      };
-    } else {
-      record = commonRecord;
-    }
+    record = { ...commonRecord, ...classificationFields };
   } catch (error) {
     failures += 1;
     record = {

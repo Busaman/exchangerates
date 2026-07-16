@@ -32,6 +32,10 @@ $env:WISE_INVESTIGATION_ENABLED = "true"
 pnpm investigate:wise
 ```
 
+Direct invocation without the exact opt-in exits with status 1 deliberately: running a live
+investigation command without acknowledging network access is treated as misuse rather than a
+skipped probe.
+
 Normal tests and CI never call Wise. `WISE_FRONTEND_TOKEN` is accepted by the script only as a
 temporary Variant B input if the minimal request fails; it is never printed or persisted. It was not
 needed during this investigation.
@@ -163,6 +167,12 @@ pages:
 | 100,000 HUF→EUR | fee 1,776 HUF; received 271.25 EUR    | same     | Match   |
 | 998,877 HUF→EUR | fee 14,537 HUF; received 2,718.27 EUR | same     | Match   |
 | 1,000 EUR→HUF   | fee 16.01 EUR; received 356,322 HUF   | same     | Match   |
+
+The amount matrix, UI comparisons, and sanitized fixtures were captured in separate time windows
+on 2026-07-16. The HUF→EUR fixture carries source timestamp `18:43:36Z`, while the EUR→HUF fixture
+carries `21:16:55Z`; the matrix and UI observations were later independent samples. Rates and
+received amounts—especially the two 998,877 HUF observations—therefore differ with market movement
+and must not be forced to match across evidence sets.
 
 The separate Wise currency-converter view showed the fee-free mid-market calculation (for example,
 100,000 HUF produced about 276.15 EUR), not the comparison quote. The public comparison page matched
