@@ -135,7 +135,8 @@ export function parseWiseComparisonResponse({
   }
 
   const wiseProviders = response.providers.filter((provider) => provider.alias === "wise");
-  if (wiseProviders.length !== 1) fail("WISE_PROVIDER_NOT_UNIQUE");
+  if (wiseProviders.length === 0) fail("WISE_PROVIDER_MISSING");
+  if (wiseProviders.length > 1) fail("WISE_PROVIDER_NOT_UNIQUE");
   const provider = wiseProviders[0];
   if (provider === undefined) fail("WISE_PROVIDER_MISSING");
   if (provider.quotes.length !== 1) fail("WISE_QUOTE_COUNT_UNSUPPORTED");

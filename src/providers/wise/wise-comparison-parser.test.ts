@@ -68,7 +68,7 @@ describe("parseWiseComparisonResponse", () => {
   });
 
   it("requires exactly one Wise provider and exactly one understandable quote", () => {
-    expect(() => parseHuf({ ...hufEurFixture, providers: [] })).toThrow("WISE_PROVIDER_NOT_UNIQUE");
+    expect(() => parseHuf({ ...hufEurFixture, providers: [] })).toThrow("WISE_PROVIDER_MISSING");
     expect(() =>
       parseHuf({
         ...hufEurFixture,

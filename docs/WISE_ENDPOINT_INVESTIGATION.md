@@ -69,19 +69,19 @@ All rows are time-specific sanitized evidence. Latency is end-to-end client late
 `Difference` is the absolute decimal difference between `(amount - fee) × rate` and
 `receivedAmount`. EUR targets allow at most EUR 0.01; HUF targets allow at most HUF 1.
 
-| Direction |    Amount | HTTP | Latency |        Fee |       Rate |      Received | Difference | Result                        |
-| --------- | --------: | ---: | ------: | ---------: | ---------: | ------------: | ---------: | ----------------------------- |
-| HUF→EUR   |       100 |  200 |     221 |          — |          — |             — |          — | No Wise provider; fail closed |
-| HUF→EUR   |    10,000 |  200 |      91 |    499 HUF | 0.00276159 |     26.24 EUR | 0.00213341 | Valid                         |
-| HUF→EUR   |   100,000 |  200 |      99 |  1,776 HUF | 0.00276159 |    271.25 EUR | 0.00441616 | Valid                         |
-| HUF→EUR   |   400,000 |  200 |     100 |  6,035 HUF | 0.00276159 |  1,087.97 EUR | 0.00019565 | Valid                         |
-| HUF→EUR   |   998,877 |  200 |      93 | 14,537 HUF | 0.00276159 |  2,718.34 EUR | 0.00350060 | Valid                         |
-| HUF→EUR   | 1,000,000 |  200 |      91 | 14,554 HUF | 0.00276159 |  2,721.40 EUR | 0.00218086 | Valid                         |
-| EUR→HUF   |         1 |  200 |     104 |   0.87 EUR |     362.11 |        47 HUF |     0.0743 | Valid                         |
-| EUR→HUF   |        10 |  200 |      93 |      1 EUR |     362.11 |     3,259 HUF |       0.01 | Valid                         |
-| EUR→HUF   |       100 |  200 |      95 |   2.36 EUR |     362.11 |    35,356 HUF |     0.4204 | Valid                         |
-| EUR→HUF   |     1,000 |  200 |      92 |  16.01 EUR |     362.11 |   356,313 HUF |     0.3811 | Valid                         |
-| EUR→HUF   |     5,000 |  200 |      98 |  76.67 EUR |     362.11 | 1,782,787 HUF |     0.0263 | Valid                         |
+| Direction |    Amount | HTTP | Latency |        Fee |       Rate |      Received | Difference | Result                                               |
+| --------- | --------: | ---: | ------: | ---------: | ---------: | ------------: | ---------: | ---------------------------------------------------- |
+| HUF→EUR   |       100 |  200 |     221 |          — |          — |             — |          — | Expected absence in live script; parser fails closed |
+| HUF→EUR   |    10,000 |  200 |      91 |    499 HUF | 0.00276159 |     26.24 EUR | 0.00213341 | Valid                                                |
+| HUF→EUR   |   100,000 |  200 |      99 |  1,776 HUF | 0.00276159 |    271.25 EUR | 0.00441616 | Valid                                                |
+| HUF→EUR   |   400,000 |  200 |     100 |  6,035 HUF | 0.00276159 |  1,087.97 EUR | 0.00019565 | Valid                                                |
+| HUF→EUR   |   998,877 |  200 |      93 | 14,537 HUF | 0.00276159 |  2,718.34 EUR | 0.00350060 | Valid                                                |
+| HUF→EUR   | 1,000,000 |  200 |      91 | 14,554 HUF | 0.00276159 |  2,721.40 EUR | 0.00218086 | Valid                                                |
+| EUR→HUF   |         1 |  200 |     104 |   0.87 EUR |     362.11 |        47 HUF |     0.0743 | Valid                                                |
+| EUR→HUF   |        10 |  200 |      93 |      1 EUR |     362.11 |     3,259 HUF |       0.01 | Valid                                                |
+| EUR→HUF   |       100 |  200 |      95 |   2.36 EUR |     362.11 |    35,356 HUF |     0.4204 | Valid                                                |
+| EUR→HUF   |     1,000 |  200 |      92 |  16.01 EUR |     362.11 |   356,313 HUF |     0.3811 | Valid                                                |
+| EUR→HUF   |     5,000 |  200 |      98 |  76.67 EUR |     362.11 | 1,782,787 HUF |     0.0263 | Valid                                                |
 
 Every available Wise quote in this run used `amountType: "SEND"`, matched the requested response
 amount and currencies, contained exactly one Wise provider and one Wise quote, and reported

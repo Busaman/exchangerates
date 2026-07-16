@@ -61,11 +61,13 @@ const baseHeaders = {
 
 const matrix = [
   ...["100", "10000", "100000", "400000", "998877", "1000000"].map((sendAmount) => ({
+    expectWise: sendAmount !== "100",
     sendAmount,
     sourceCurrency: "HUF",
     targetCurrency: "EUR",
   })),
   ...["1", "10", "100", "1000", "5000"].map((sendAmount) => ({
+    expectWise: true,
     sendAmount,
     sourceCurrency: "EUR",
     targetCurrency: "HUF",
@@ -301,9 +303,11 @@ const baseRequest = {
 };
 
 for (const entry of matrix) {
+  const { expectWise, ...params } = entry;
   await probe({
+    expectWise,
     label: `matrix-${entry.sourceCurrency}-${entry.targetCurrency}-${entry.sendAmount}`,
-    params: { ...entry, sourceCountry: "HU" },
+    params: { ...params, sourceCountry: "HU" },
   });
 }
 
@@ -339,6 +343,7 @@ await probe({ label: "country-DE", params: { ...baseRequest, sourceCountry: "DE"
 
 await probe({ label: "parameter-filter-omitted", params: { ...baseRequest, filter: null } });
 await probe({
+  expectWise: false,
   label: "parameter-include-wise-omitted",
   params: { ...baseRequest, includeWise: null },
 });
