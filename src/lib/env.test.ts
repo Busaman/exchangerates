@@ -86,4 +86,33 @@ describe("Revolut experimental feature gate", () => {
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("keeps a mock-only quotes request operational when an unrelated log level is invalid", async () => {
+    vi.stubEnv("LOG_LEVEL", "verbose");
+    vi.stubEnv("REVOLUT_ADAPTER_ENABLED", "false");
+    const fetchSpy = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.resetModules();
+    const { POST } = await import("@/app/api/v1/quotes/route");
+
+    const response = await POST(
+      new Request("http://localhost/api/v1/quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCurrency: "EUR",
+          targetCurrency: "HUF",
+          sourceAmount: "1000",
+          providers: ["MOCK_PROVIDER"],
+        }),
+      }),
+    );
+    const payload = quoteApiResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(payload.sourceStatus).toBe("SUCCESS");
+    expect(payload.quotes).toHaveLength(1);
+    expect(payload.quotes[0]?.provider.id).toBe("MOCK_PROVIDER");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });

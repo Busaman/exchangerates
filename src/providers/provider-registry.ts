@@ -1,5 +1,5 @@
 import { providerIdentifierSchema, type ProviderIdentifier } from "@/domain/quote";
-import { getRuntimeEnv } from "@/lib/env";
+import { resolveRevolutAdapterEnabled, resolveRevolutFreshCacheMs } from "@/lib/env";
 import { MockProviderAdapter } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
@@ -90,8 +90,7 @@ export function createProviderRegistry({
   ]);
 }
 
-const runtimeEnv = getRuntimeEnv();
 export const providerRegistry = createProviderRegistry({
-  revolutEnabled: runtimeEnv.REVOLUT_ADAPTER_ENABLED,
-  revolutFreshCacheMs: runtimeEnv.REVOLUT_FRESH_CACHE_MS,
+  revolutEnabled: resolveRevolutAdapterEnabled(process.env.REVOLUT_ADAPTER_ENABLED),
+  revolutFreshCacheMs: resolveRevolutFreshCacheMs(process.env.REVOLUT_FRESH_CACHE_MS),
 });
