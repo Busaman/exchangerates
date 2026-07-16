@@ -176,6 +176,10 @@ negative-cache or stale-cache policy. Controlled preview testing uses
 status category, duration, failure code and ranking exclusion reason, never exact amounts, payloads,
 cookies or personal identifiers.
 
+The controlled 2026-07-16 Preview run observed no 403, 429, 5xx or timeout at 60, 30 or 15 seconds.
+Keep 60 seconds as the recommendation because 30 and 15 seconds each have only one short sample;
+details and latency measurements are in `docs/REVOLUT_STAGING_VALIDATION.md`.
+
 Comparison uses `rankingEffectiveRate = targetAmount / totalSourceCost` when this validated
 source-currency Revolut cost exists. Providers without that optional field use
 `targetAmount / sourceAmount`. Sort descending; exact ties use ascending provider ID. A malformed,

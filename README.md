@@ -263,7 +263,9 @@ Revolut may be enabled only in a dedicated preview/staging environment with exac
 in-process cache is separately configurable with `REVOLUT_FRESH_CACHE_MS`; malformed, zero,
 negative, below-15-second or above-five-minute values fall back to the safe 60-second default.
 See `docs/REVOLUT_STAGING_VALIDATION.md` for the controlled interval experiment and current
-recommendation.
+recommendation. The 2026-07-16 Preview experiment found no errors at 60, 30 or 15 seconds, but keeps
+60 seconds because the shorter intervals have only a single short-run sample. Production remains
+disabled.
 
 ## Project context
 

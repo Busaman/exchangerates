@@ -1,12 +1,18 @@
-const baseUrl = process.env.NEORATE_STAGING_URL?.replace(/\/$/, "");
+const stagingUrlValue = process.env.NEORATE_STAGING_URL;
 const intervalMs = Number(process.env.REVOLUT_STAGING_INTERVAL_MS);
+const protectionBypass = process.env.NEORATE_STAGING_PROTECTION_BYPASS;
 
-if (baseUrl === undefined || !Number.isInteger(intervalMs) || intervalMs < 15_000) {
+if (stagingUrlValue === undefined || !Number.isInteger(intervalMs) || intervalMs < 15_000) {
   console.error(
     "Set NEORATE_STAGING_URL and REVOLUT_STAGING_INTERVAL_MS (minimum 15000) explicitly.",
   );
   process.exit(1);
 }
+
+const stagingUrl = new URL(stagingUrlValue);
+const endpointUrl = new URL("/api/v1/quotes", stagingUrl);
+const previewShareToken = stagingUrl.searchParams.get("_vercel_share");
+if (previewShareToken !== null) endpointUrl.searchParams.set("_vercel_share", previewShareToken);
 
 const cases = [
   { sourceCurrency: "HUF", targetCurrency: "EUR", sourceAmount: "1000" },
@@ -28,9 +34,12 @@ function percentile(values, fraction) {
 
 async function requestQuote(testCase, wave) {
   const startedAt = performance.now();
-  const response = await fetch(`${baseUrl}/api/v1/quotes`, {
+  const response = await fetch(endpointUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(protectionBypass === undefined ? {} : { "x-vercel-protection-bypass": protectionBypass }),
+    },
     body: JSON.stringify({
       ...testCase,
       providers: ["REVOLUT"],
@@ -99,7 +108,7 @@ const statusCounts = Object.groupBy(results, (result) => String(result.httpStatu
 console.log(
   JSON.stringify({
     intervalMs,
-    stagingUrl: baseUrl,
+    stagingUrl: stagingUrl.origin,
     totalQuoteRequests: results.length,
     httpStatusCounts: Object.fromEntries(
       Object.entries(statusCounts).map(([status, entries]) => [status, entries?.length ?? 0]),

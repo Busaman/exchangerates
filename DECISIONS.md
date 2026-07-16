@@ -217,3 +217,9 @@ identifiers and personal data are not logged; amounts use broad buckets. Because
 instances do not share this cache, staging results must report instance-local behavior and cannot be
 treated as proof of a global cache hit ratio. The controlled evidence and interval recommendation
 are maintained in `docs/REVOLUT_STAGING_VALIDATION.md`.
+
+The first controlled Preview experiment on 2026-07-16 tested 60, 30 and 15 seconds with 46 valid API
+requests per interval. All 138 API responses and all 87 observed Revolut outbound responses were
+successful, with no 403, 429, 5xx or timeout. Because the shorter intervals were sampled only once,
+the decision remains the conservative 60-second default; a shorter value requires repeated staging
+evidence rather than a single passing run.
