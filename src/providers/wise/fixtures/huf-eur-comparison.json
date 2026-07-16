@@ -1,0 +1,30 @@
+{
+  "_sanitized": true,
+  "_sourceClassification": "LIVE_UNOFFICIAL_INVESTIGATION_EVIDENCE",
+  "amount": 998877,
+  "amountType": "SEND",
+  "providers": [
+    {
+      "alias": "wise",
+      "name": "Wise",
+      "type": "moneyTransferProvider",
+      "quotes": [
+        {
+          "dateCollected": "2026-07-16T18:43:36Z",
+          "fee": 14537,
+          "isConsideredMidMarketRate": true,
+          "markup": 0,
+          "rate": 0.00276476,
+          "receivedAmount": 2721.46,
+          "sendAmount": null,
+          "sourceCountry": "HU",
+          "targetCountry": null
+        }
+      ]
+    }
+  ],
+  "sourceCountry": "HU",
+  "sourceCurrency": "HUF",
+  "targetCountry": null,
+  "targetCurrency": "EUR"
+}

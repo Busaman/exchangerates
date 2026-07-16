@@ -18,6 +18,9 @@ explicit `LIVE_UNOFFICIAL` labeling and no fallback. The validated environment g
 timeout, amount/plan-aware cache, negative cache and single-flight control are complete. It remains
 operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
 after source/legal review. Investigate Gránit Bank only if a reliable legal source is identified.
+The Wise comparison endpoint technical investigation is complete with a
+`PROCEED_WITH_RESTRICTIONS` verdict: the isolated parser and opt-in script are not a provider
+integration. A future Wise adapter requires a separate legal/product-approved PR and staging gate.
 
 ## 4. Historical rate storage — planned
 

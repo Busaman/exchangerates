@@ -216,6 +216,7 @@ pnpm test             # unit tests once
 pnpm test:watch       # unit tests in watch mode
 pnpm test:coverage    # unit test coverage
 pnpm test:revolut:live # explicit live endpoint probe (requires its environment flag)
+pnpm investigate:wise # opt-in technical Wise endpoint investigation; never runs in CI
 pnpm test:e2e         # future Playwright suite
 pnpm format           # write formatting
 pnpm format:check     # verify formatting
@@ -255,6 +256,14 @@ Correctly scaled live requests return the dynamic Standard fee shown by the publ
 NeoRate does not hard-code a threshold; it uses the exact amount-specific response. The quote remains
 `FULL_ALLOWANCE_ASSUMED` because the endpoint has no account-specific rolling-30-day context, and
 final app verification remains required.
+
+Wise is not integrated. A 2026-07-16 technical investigation found that Wise's undocumented public
+comparison endpoint was reachable from server-side Node without cookies or a frontend token and
+returned mathematically consistent HUF/EUR and EUR/HUF comparison quotes for supported amounts.
+The smallest tested amount, 100 HUF, returned no Wise provider despite HTTP 200. The isolated parser
+and opt-in investigation script are not registered in the quote API or UI. See
+[`docs/WISE_ENDPOINT_INVESTIGATION.md`](./docs/WISE_ENDPOINT_INVESTIGATION.md) for the
+`PROCEED_WITH_RESTRICTIONS` verdict, evidence, limitations, and legal/product-review gate.
 
 ## Project context
 

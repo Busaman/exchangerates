@@ -53,6 +53,13 @@ Missing, empty, `false`, or any unrecognized value fails safely to disabled and 
 registry or route-module creation; this optional experimental flag is not parsed by a throwing
 module-scope schema and affects no other provider.
 
+The Wise comparison endpoint investigation is deliberately outside the runtime adapter graph.
+`src/providers/wise/wise-comparison-parser.ts` validates already-fetched sanitized evidence only;
+it performs no network access and Wise has no provider identifier, registry entry, API/UI option,
+ranking path, or production feature flag. A future `LIVE_UNOFFICIAL` adapter requires a separate
+approved change after the technical, legal, and product restrictions in
+`docs/WISE_ENDPOINT_INVESTIGATION.md` are resolved.
+
 The Revolut personal adapter is isolated under `src/providers/revolut`. Its dedicated client fetches
 only `GET https://www.revolut.com/api/exchange/quote` with allowlisted `amount`, `country=HU`,
 `fromCurrency`, `isRecipientAmount=false`, and `toCurrency` parameters. It sends JSON accept,

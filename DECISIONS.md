@@ -201,3 +201,29 @@ through Sunday 18:00 ET, classified with `America/New_York`, every Revolut plan 
 but `EXCLUDED_INCOMPLETE_FEES` with reason `WEEKEND_FEE_UNVERIFIED`. This rule follows daylight-saving
 transitions and must remain until controlled weekend evidence supports a narrower policy. App
 verification remains required in every case.
+
+## ADR-012 — Wise public comparison endpoint investigation
+
+**Status:** Investigated; not approved for runtime integration (2026-07-16)
+
+Wise's undocumented `GET https://wise.com/gateway/v4/comparisons` endpoint was reachable from a
+server-side Node environment with ordinary JSON accept and identifying User-Agent headers. Cookies,
+authorization, browser identifiers, and the observed public frontend `x-access-token` were not
+required. Both HUF→EUR and EUR→HUF returned decimal-reconcilable Wise comparison quotes across the
+tested supported amounts, and the public Wise comparison UI matched three representative endpoint
+observations. A 100 HUF request returned HTTP 200 with no providers, so HTTP success alone is never
+quote success.
+
+The evidence supports `amount` as the total source debit, `fee` as a source-currency deduction,
+`rate` as the pre-fee directional rate, and `receivedAmount` as the rounded net payout for the
+observed `amountType: SEND` responses. This interpretation remains evidence-bound because the
+contract is undocumented. `sourceCountry=HU` materially changed fees and must be retained for
+Hungarian results. `includeWise=true` was necessary; the exact `wise` alias and exactly one
+understandable quote are mandatory fail-closed invariants.
+
+Verdict: **PROCEED_WITH_RESTRICTIONS**. The repository may retain an opt-in investigation script,
+sanitized fixtures, and an isolated network-free parser. It must not register or expose Wise until a
+separate adapter PR receives legal/product approval, operational review, staging evidence, and
+explicit `LIVE_UNOFFICIAL`/indicative labeling. A future adapter should begin with a conservative
+60-second amount/pair/country-aware cache. The comparison endpoint is not assumed to be an
+account-specific or payment-method-specific executable quote.
