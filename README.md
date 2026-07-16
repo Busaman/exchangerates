@@ -200,6 +200,7 @@ fee does not appear as zero.
 | `DATABASE_URL`              | For database commands/features | PostgreSQL connection URL; validated lazily before a DB client is created                  |
 | `LOG_LEVEL`                 | No                             | `debug`, `info`, `warn`, or `error`; defaults to `info`                                    |
 | `REVOLUT_ADAPTER_ENABLED`   | No                             | Only exact lowercase `true` enables Revolut; every other value safely disables it          |
+| `REVOLUT_FRESH_CACHE_MS`    | No                             | Revolut-only fresh-cache TTL; defaults to `60000`, accepted range `15000`–`300000` ms      |
 | `REVOLUT_LIVE_TEST_ENABLED` | No                             | Exactly `true` enables the explicit manual endpoint probe; normal tests never call Revolut |
 
 Never commit `.env` files or credentials. `.env.example` contains documentation-only values.
@@ -216,6 +217,7 @@ pnpm test             # unit tests once
 pnpm test:watch       # unit tests in watch mode
 pnpm test:coverage    # unit test coverage
 pnpm test:revolut:live # explicit live endpoint probe (requires its environment flag)
+pnpm test:revolut:staging # controlled preview cache/latency experiment
 pnpm test:e2e         # future Playwright suite
 pnpm format           # write formatting
 pnpm format:check     # verify formatting
@@ -255,6 +257,15 @@ Correctly scaled live requests return the dynamic Standard fee shown by the publ
 NeoRate does not hard-code a threshold; it uses the exact amount-specific response. The quote remains
 `FULL_ALLOWANCE_ASSUMED` because the endpoint has no account-specific rolling-30-day context, and
 final app verification remains required.
+
+Revolut may be enabled only in a dedicated preview/staging environment with exact
+`REVOLUT_ADAPTER_ENABLED=true`. Production must omit the flag or set it to `false`. The positive
+in-process cache is separately configurable with `REVOLUT_FRESH_CACHE_MS`; malformed, zero,
+negative, below-15-second or above-five-minute values fall back to the safe 60-second default.
+See `docs/REVOLUT_STAGING_VALIDATION.md` for the controlled interval experiment and current
+recommendation. The 2026-07-16 Preview experiment found no errors at 60, 30 or 15 seconds, but keeps
+60 seconds because the shorter intervals have only a single short-run sample. Production remains
+disabled.
 
 ## Project context
 

@@ -110,7 +110,9 @@ but all are excluded or stale, the API returns `NO_RANKABLE_QUOTES` and `bestPro
 
 ## Cache and update strategy
 
-There is no shared cache yet. The Revolut quote client has an in-process 60-second fresh cache keyed
+There is no shared cache yet. The Revolut quote client has an in-process fresh cache, safely
+configured by `REVOLUT_FRESH_CACHE_MS` with a 60-second default and a validated 15-second to
+five-minute range, keyed
 by direction, exact normalized source amount, selected plan and every material provider context. Concurrent
 refreshes for the same key share one in-flight request. Fetch/parse
 failure is negative-cached for 30 seconds to avoid repeated retry storms; this never extends the
@@ -170,8 +172,13 @@ Expected source failures are typed unavailable results. The comparison service i
 adapter failures into `error/FAILED` results while emitting structured error logs with request/provider context
 but no credentials or raw sensitive payloads; request/schema failures outside an adapter still fail
 the request rather than being mislabeled as provider unavailability.
-Future production telemetry should measure adapter latency, success rate, quote age, cache behavior
-and direction-specific anomalies. Rate-limit public APIs, validate all inputs, use least-privilege DB
+Revolut emits structured operational events for quote demand, cache outcome, outbound status
+category and duration, pair, plan, validation failure code, freshness and ranking exclusion reason.
+Amounts are logged only as broad currency-specific buckets; raw bodies, exact user amounts,
+cookies, authorization and browser identifiers are excluded. The events support controlled staging
+measurement but are not a durable metrics backend. Future production telemetry should aggregate
+adapter latency, success rate, quote age, cache behavior and direction-specific anomalies.
+Rate-limit public APIs, validate all inputs, use least-privilege DB
 credentials, keep secrets in deployment environment variables, pin/scan dependencies, and apply
 authorization at the server handler—not only middleware/proxy.
 

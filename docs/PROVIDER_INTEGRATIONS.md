@@ -80,7 +80,8 @@ boundary is inclusive; a larger difference is invalid. The returned cost is pres
 Fixtures under `src/providers/revolut/fixtures` are sanitized JSON contract examples. Unit tests
 never call Revolut. The optional `pnpm test:revolut:live` script runs only with
 `REVOLUT_LIVE_TEST_ENABLED=true` and prints sanitized summaries. The client uses a 2.5-second
-per-attempt timeout, two bounded retries, 60-second fresh cache, 30-second negative cache,
+per-attempt timeout, two bounded retries, configurable positive cache (60-second safe default,
+validated 15-second floor and five-minute ceiling), 30-second negative cache,
 amount/direction/plan-specific single-flight and a 15-minute stale ceiling. Negative results suppress
 retry storms but do not renew timestamps or stale age. Only a last successful observation for the
 same material request can become `STALE`; it is never ranked.
@@ -167,6 +168,17 @@ approval satisfy the approval gate. The registry's 10-second Revolut deadline do
 The gate is typo-safe: only exact lowercase `true` enables Revolut. Missing, empty, `false`, `yes`,
 `1`, `TRUE`, or any other value disables it without throwing or blocking other providers. An
 unrecognized non-empty value may be logged server-side.
+
+`REVOLUT_FRESH_CACHE_MS` changes only the in-process positive-cache lifetime. Missing, malformed,
+zero, negative, below-15-second or above-five-minute values safely use `60000`. It does not alter the
+negative-cache or stale-cache policy. Controlled preview testing uses
+`pnpm test:revolut:staging`; operational logs contain pair, plan, amount bucket, cache outcome,
+status category, duration, failure code and ranking exclusion reason, never exact amounts, payloads,
+cookies or personal identifiers.
+
+The controlled 2026-07-16 Preview run observed no 403, 429, 5xx or timeout at 60, 30 or 15 seconds.
+Keep 60 seconds as the recommendation because 30 and 15 seconds each have only one short sample;
+details and latency measurements are in `docs/REVOLUT_STAGING_VALIDATION.md`.
 
 Comparison uses `rankingEffectiveRate = targetAmount / totalSourceCost` when this validated
 source-currency Revolut cost exists. Providers without that optional field use

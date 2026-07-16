@@ -1,8 +1,9 @@
 import { providerIdentifierSchema, type ProviderIdentifier } from "@/domain/quote";
-import { resolveRevolutAdapterEnabled } from "@/lib/env";
+import { resolveRevolutAdapterEnabled, resolveRevolutFreshCacheMs } from "@/lib/env";
 import { MockProviderAdapter } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
+import { RevolutPublicQuoteClient } from "@/providers/revolut/revolut-quote-client";
 import { UnavailableProviderAdapter } from "@/providers/unavailable-provider";
 
 export type ProviderRegistrationStatus = "SUPPORTED" | "UNAVAILABLE";
@@ -58,10 +59,16 @@ export class ProviderAdapterRegistry {
 
 export function createProviderRegistry({
   revolutEnabled,
+  revolutFreshCacheMs,
 }: {
   revolutEnabled: boolean;
+  revolutFreshCacheMs?: number;
 }): ProviderAdapterRegistry {
-  const revolutAdapter = new RevolutProviderAdapter();
+  const revolutAdapter = new RevolutProviderAdapter({
+    ...(revolutFreshCacheMs === undefined
+      ? {}
+      : { quoteClient: new RevolutPublicQuoteClient({ freshCacheMs: revolutFreshCacheMs }) }),
+  });
 
   return new ProviderAdapterRegistry([
     { adapter: new MockProviderAdapter(), status: "SUPPORTED" },
@@ -85,4 +92,5 @@ export function createProviderRegistry({
 
 export const providerRegistry = createProviderRegistry({
   revolutEnabled: resolveRevolutAdapterEnabled(process.env.REVOLUT_ADAPTER_ENABLED),
+  revolutFreshCacheMs: resolveRevolutFreshCacheMs(process.env.REVOLUT_FRESH_CACHE_MS),
 });

@@ -44,12 +44,11 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
-`Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed
-only `STANDARD`; verify whether and under which public request semantics the other four personal plans
-are returned. Verify correctly scaled below/above-allowance amounts, actual weekend behavior,
-latency, rate-limit/error rates, cache transitions and response-contract stability. Obtain
-legal/product approval for the undocumented JSON endpoint before production enablement; add telemetry
-without a fallback. Correctly decoded weekday quotes may rank, while the current safety gate keeps
-all weekend Revolut rows visible but out of best-result ranking. Validate that remaining gate against
-converter/app samples during an actual Friday 17:00 ET–Sunday 18:00 ET window before relaxation.**
+**Repeat the controlled Revolut Preview experiment over a longer window and complete simultaneous
+weekend endpoint/converter verification during Friday 17:00 ET–Sunday 18:00 ET. The first weekday
+Preview run found no 403, 429, 5xx or timeout at 60, 30 or 15 seconds, so the conservative 60-second
+setting remains recommended until repeated evidence supports lowering it. Confirm whether any public
+request semantics return PLUS, PREMIUM, METAL or ULTRA; never substitute Standard. Obtain legal and
+product approval for the undocumented `LIVE_UNOFFICIAL` endpoint before production enablement.
+Production must remain disabled, and the weekend ranking exclusion must remain until issue #5's
+simultaneous evidence is complete.**
