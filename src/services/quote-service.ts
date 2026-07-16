@@ -77,7 +77,12 @@ function publicReasonFor(errorCode: ProviderErrorCode): string {
 }
 
 function isRankableQuote(result: QuoteResult): boolean {
-  return result.kind === "quote" && result.status === "AVAILABLE" && result.freshness !== "STALE";
+  return (
+    result.kind === "quote" &&
+    result.status === "AVAILABLE" &&
+    result.freshness !== "STALE" &&
+    result.rankingStatus === "ELIGIBLE"
+  );
 }
 
 function compareRankableQuotes(left: AvailableQuote, right: AvailableQuote): number {
@@ -157,7 +162,9 @@ export async function getQuotes(
   const bestProviderId = rankableQuotes[0]?.provider.id ?? null;
   const sourceStatus =
     rankableQuotes.length === 0
-      ? "NO_AVAILABLE_QUOTES"
+      ? quotes.length === 0
+        ? "NO_AVAILABLE_QUOTES"
+        : "NO_RANKABLE_QUOTES"
       : rankableQuotes.length < results.length
         ? "PARTIAL_SUCCESS"
         : "SUCCESS";
@@ -167,6 +174,12 @@ export async function getQuotes(
       (quote) => quote.provider.id === "REVOLUT" && quote.sourceType === "LIVE_UNOFFICIAL",
     )
       ? (["REVOLUT_INDICATIVE"] as const)
+      : []),
+    ...(quotes.some(
+      (quote) =>
+        quote.provider.id === "REVOLUT" && quote.rankingStatus === "EXCLUDED_INCOMPLETE_FEES",
+    )
+      ? (["REVOLUT_FEE_INCOMPLETE"] as const)
       : []),
   ];
 

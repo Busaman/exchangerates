@@ -78,13 +78,25 @@ In the foundation mock, `totalCost` equals the explicit fee because no verified 
 available. Future spread-derived cost must be stored as a separately named component before it can
 be included in `totalCost`, with the cost currency and methodology documented.
 
-For Revolut personal quotes, the endpoint's actual sender and recipient amounts are authoritative
-for normalization. The adapter selects the exact requested personal plan, retains the raw directional
-rate, normalizes `fees.fx`, `fees.total`, and `fees.cost`, and derives the effective rate from actual
-recipient divided by sender using decimal.js. It neither reconstructs nor rounds the payout and never
-adds a manually calculated fee. Because the public request has no account identity or prior-usage
-parameter, results explicitly carry `FULL_ALLOWANCE_ASSUMED`; they cannot represent consumed rolling
-30-day allowance and must be confirmed in the app.
+For Revolut personal quotes, the adapter boundary implements a provider-specific fixed-hundredth
+codec. User major-unit source amounts are multiplied by 100 into exact integer API units; endpoint
+`sender`, `recipient`, `fees.fx`, `fees.total`, and `fees.cost` integers are divided by 100 back into
+normal major-unit decimal strings. This applies to HUF as well as EUR and is not an ISO 4217 minor-unit
+rule. The decoded recipient is the normalized target and is checked against `sender × rawRate` within
+0.01 target unit. Provider details retain `ENDPOINT_HUNDREDTH_UNIT_DECODED`. The adapter never adds a
+manually calculated fee. Because the public request has no account
+identity or prior-usage parameter, results explicitly carry `FULL_ALLOWANCE_ASSUMED`; they cannot
+represent consumed rolling 30-day allowance and must be confirmed in the app. Endpoint total fee is
+also normalized as `feePercentage = totalFee / senderAmount × 100` with decimal.js. The API retains
+the unrounded decimal string; only the UI applies presentation rounding and it increases precision
+when necessary so a positive fee never appears as zero.
+
+The earlier converter/endpoint weekday fee discrepancy was an integration-unit error, not a verified
+source gap: requests sent `972` instead of `97200`. Correctly scaled amount-specific responses include
+the dynamic fee. Weekday quotes therefore remain rankable using decoded endpoint costs. During Friday 17:00 ET through Sunday
+18:00 ET, every Revolut plan is excluded because public-endpoint weekend-fee coverage is unverified;
+the window is evaluated in `America/New_York` so DST changes are respected. This guard affects
+ranking only and never fabricates a fee.
 
 Every available quote exposes a separate `rankingEffectiveRate`. When a validated source-currency
 `providerDetails.totalSourceCost` exists, it is `targetAmount / totalSourceCost`; otherwise it is
@@ -93,11 +105,13 @@ top using one decimal.js metric. Ranking is descending by this value, with ascen
 the deterministic tie-break. The provider's raw/displayed and provider-specific effective rates keep
 their original meanings. Present-but-malformed, non-positive, or wrong-currency total source cost is
 a provider-invalid response; fallback applies only when that provider-specific field is absent.
+Only fresh `AVAILABLE` quotes with `rankingStatus = ELIGIBLE` enter this sort. If visible quotes exist
+but all are excluded or stale, the API returns `NO_RANKABLE_QUOTES` and `bestProviderId = null`.
 
 ## Cache and update strategy
 
 There is no shared cache yet. The Revolut quote client has an in-process 60-second fresh cache keyed
-by direction, normalized source amount, selected plan and every material provider context. Concurrent
+by direction, exact normalized source amount, selected plan and every material provider context. Concurrent
 refreshes for the same key share one in-flight request. Fetch/parse
 failure is negative-cached for 30 seconds to avoid repeated retry storms; this never extends the
 source timestamp or stale window. After a failed refresh, the last successful observation may be

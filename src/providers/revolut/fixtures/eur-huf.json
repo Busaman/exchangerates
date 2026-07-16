@@ -1,6 +1,7 @@
 {
-  "sender": { "amount": 1000, "currency": "EUR" },
-  "recipient": { "amount": 354879, "currency": "HUF" },
+  "_amountUnit": "ONE_HUNDREDTH_MAJOR_UNIT",
+  "sender": { "amount": 100000, "currency": "EUR" },
+  "recipient": { "amount": 35487926, "currency": "HUF" },
   "rate": {
     "from": "EUR",
     "to": "HUF",
@@ -15,7 +16,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "EUR" },
         "total": { "amount": 0, "currency": "EUR" },
-        "cost": { "amount": 1000, "currency": "EUR" }
+        "cost": { "amount": 100000, "currency": "EUR" }
       },
       "tooltipLong": "No exchange fee is shown for this public quote",
       "tooltipShort": "No fee"
@@ -26,7 +27,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "EUR" },
         "total": { "amount": 0, "currency": "EUR" },
-        "cost": { "amount": 1000, "currency": "EUR" }
+        "cost": { "amount": 100000, "currency": "EUR" }
       }
     },
     {
@@ -35,7 +36,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "EUR" },
         "total": { "amount": 0, "currency": "EUR" },
-        "cost": { "amount": 1000, "currency": "EUR" }
+        "cost": { "amount": 100000, "currency": "EUR" }
       }
     },
     {
@@ -44,7 +45,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "EUR" },
         "total": { "amount": 0, "currency": "EUR" },
-        "cost": { "amount": 1000, "currency": "EUR" }
+        "cost": { "amount": 100000, "currency": "EUR" }
       }
     },
     {
@@ -53,7 +54,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "EUR" },
         "total": { "amount": 0, "currency": "EUR" },
-        "cost": { "amount": 1000, "currency": "EUR" }
+        "cost": { "amount": 100000, "currency": "EUR" }
       }
     }
   ]

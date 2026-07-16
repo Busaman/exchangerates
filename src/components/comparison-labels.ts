@@ -7,11 +7,20 @@ export function isFullAllowanceAssumedQuote(result: QuoteResult): boolean {
   );
 }
 
+export function isFeeCoverageIncompleteQuote(result: QuoteResult): boolean {
+  return result.kind === "quote" && result.rankingStatus === "EXCLUDED_INCOMPLETE_FEES";
+}
+
 export function bestResultBadgeLabel(
   result: QuoteResult,
   bestProviderId: ProviderIdentifier | null | undefined,
 ): string | null {
-  if (result.provider.id !== bestProviderId || result.kind !== "quote") return null;
+  if (
+    result.provider.id !== bestProviderId ||
+    result.kind !== "quote" ||
+    result.rankingStatus !== "ELIGIBLE"
+  )
+    return null;
   if (isFullAllowanceAssumedQuote(result)) {
     return "Legjobb indikatív best-case eredmény · teljes keret feltételezve";
   }

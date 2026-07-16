@@ -19,17 +19,17 @@ export const revolutQuoteClientConfig = {
   maximumSourceObservationAgeMs: 15 * 60_000,
   maximumFutureClockSkewMs: 2 * 60_000,
   maximumJsonBytes: 250_000,
-  consistencyTolerance: "0.005",
+  maximumDecodedRecipientDifference: "0.01",
   plausibleRates: {
     "EUR-HUF": { minimum: "100", maximum: "1000" },
     "HUF-EUR": { minimum: "0.0005", maximum: "0.01" },
   },
 } as const;
 
-export function buildRevolutQuoteUrl(pair: RevolutPairKey, amount: string): string {
+export function buildRevolutQuoteUrl(pair: RevolutPairKey, apiAmount: string): string {
   const { sourceCurrency, targetCurrency } = currenciesForRevolutPair(pair);
   const url = new URL(revolutQuoteEndpoint);
-  url.searchParams.set("amount", amount);
+  url.searchParams.set("amount", apiAmount);
   url.searchParams.set("country", revolutQuoteClientConfig.country);
   url.searchParams.set("fromCurrency", sourceCurrency);
   url.searchParams.set("isRecipientAmount", "false");

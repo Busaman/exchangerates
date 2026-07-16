@@ -66,8 +66,13 @@ export const quoteSourceStatusSchema = z.enum([
   "SUCCESS",
   "PARTIAL_SUCCESS",
   "NO_AVAILABLE_QUOTES",
+  "NO_RANKABLE_QUOTES",
 ]);
-export const quoteWarningSchema = z.enum(["MOCK_DATA", "REVOLUT_INDICATIVE"]);
+export const quoteWarningSchema = z.enum([
+  "MOCK_DATA",
+  "REVOLUT_INDICATIVE",
+  "REVOLUT_FEE_INCOMPLETE",
+]);
 
 export const quoteApiResponseSchema = z
   .object({

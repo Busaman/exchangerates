@@ -1,0 +1,25 @@
+{
+  "_amountUnit": "ONE_HUNDREDTH_MAJOR_UNIT",
+  "sender": { "amount": 96500, "currency": "EUR" },
+  "recipient": { "amount": 34737505, "currency": "HUF" },
+  "rate": {
+    "from": "EUR",
+    "to": "HUF",
+    "rate": 359.9741547286672872,
+    "timestamp": 1784210777493
+  },
+  "fxTooltip": "Sanitized public converter quote",
+  "plans": [
+    {
+      "id": "STANDARD",
+      "name": "Standard",
+      "fees": {
+        "fx": { "amount": 2, "currency": "EUR" },
+        "total": { "amount": 2, "currency": "EUR" },
+        "cost": { "amount": 96502, "currency": "EUR" }
+      },
+      "tooltipLong": "A public converter exchange fee applies",
+      "tooltipShort": "Exchange fee"
+    }
+  ]
+}

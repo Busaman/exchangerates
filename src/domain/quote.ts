@@ -33,6 +33,8 @@ export const providerErrorCodeSchema = z.enum([
 ]);
 
 export const revolutPersonalPlanSchema = z.enum(["STANDARD", "PLUS", "PREMIUM", "METAL", "ULTRA"]);
+export const rankingStatusSchema = z.enum(["ELIGIBLE", "EXCLUDED_INCOMPLETE_FEES"]);
+export const rankingExclusionReasonSchema = z.literal("WEEKEND_FEE_UNVERIFIED");
 
 export const revolutPersonalContextSchema = z
   .object({
@@ -94,6 +96,8 @@ export const availableQuoteSchema = z
     targetAmount: positiveMonetaryAmountSchema,
     effectiveRate: positiveDecimalStringSchema,
     rankingEffectiveRate: positiveDecimalStringSchema,
+    rankingStatus: rankingStatusSchema,
+    rankingExclusionReason: rankingExclusionReasonSchema.optional(),
     explicitFee: monetaryAmountSchema,
     totalCost: monetaryAmountSchema,
     rateTimestamp: z.iso.datetime(),
@@ -111,20 +115,45 @@ export const availableQuoteSchema = z
         type: z.literal("REVOLUT_PERSONAL"),
         plan: revolutPersonalPlanSchema,
         displayedBaseRate: positiveDecimalStringSchema,
+        sourceCurrencyPerTargetUnit: positiveDecimalStringSchema.optional(),
+        endpointRecipientAmount: monetaryAmountSchema,
+        targetAmountCalculation: z.literal("ENDPOINT_HUNDREDTH_UNIT_DECODED"),
         fxFee: monetaryAmountSchema,
         totalFee: monetaryAmountSchema,
+        feePercentage: decimalStringSchema,
+        feePercentageBasis: z.literal("TOTAL_FEE_DIVIDED_BY_SENDER_AMOUNT"),
         feeCurrency: currencyCodeSchema,
         totalSourceCost: monetaryAmountSchema,
         fxTooltip: z.string().min(1).optional(),
         planTooltipLong: z.string().min(1).optional(),
         planTooltipShort: z.string().min(1).optional(),
         allowanceAssumption: z.literal("FULL_ALLOWANCE_ASSUMED"),
+        sessionClassification: z.enum(["WEEKDAY", "WEEKEND"]),
+        feeCoverage: z.enum(["ENDPOINT_REPORTED_BEST_CASE", "UNVERIFIED_WEEKEND"]),
+        feeCoverageWarning: z.string().min(1).optional(),
         indicativeWarning: z.string().min(1),
       })
       .strict()
       .optional(),
   })
   .superRefine((quote, context) => {
+    if (
+      quote.rankingStatus === "EXCLUDED_INCOMPLETE_FEES" &&
+      quote.rankingExclusionReason === undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Excluded quotes require a ranking exclusion reason",
+        path: ["rankingExclusionReason"],
+      });
+    }
+    if (quote.rankingStatus === "ELIGIBLE" && quote.rankingExclusionReason !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Eligible quotes cannot have a ranking exclusion reason",
+        path: ["rankingExclusionReason"],
+      });
+    }
     if (quote.sourceAmount.currency !== quote.pair.sourceCurrency) {
       context.addIssue({
         code: "custom",
@@ -137,6 +166,17 @@ export const availableQuoteSchema = z
         code: "custom",
         message: "Target amount currency must match the quote pair",
         path: ["targetAmount", "currency"],
+      });
+    }
+
+    if (
+      quote.providerDetails?.endpointRecipientAmount.currency !== undefined &&
+      quote.providerDetails.endpointRecipientAmount.currency !== quote.pair.targetCurrency
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Endpoint recipient currency must match the quote target currency",
+        path: ["providerDetails", "endpointRecipientAmount", "currency"],
       });
     }
 

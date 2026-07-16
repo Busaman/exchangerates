@@ -81,10 +81,11 @@ This rounding mode is a mock-fixture policy, not a universal customer-payout rul
 provider adapter must reproduce and test the provider's documented fee, rate and payout rounding
 direction. Until verified, an adapter must return unavailable rather than apply the mock policy.
 
-The Revolut JSON client does not apply a NeoRate payout rounding rule. It preserves the endpoint's
-actual sender and recipient amounts and uses decimal.js only to derive and validate values such as
-effective rate. Any precision or rounding in those returned amounts belongs to the endpoint contract
-and remains indicative rather than a claim about executable app rounding.
+The Revolut JSON client uses a provider-specific fixed-hundredth codec. Request amounts are exact
+integer hundredths of the displayed major amount, and every endpoint money field uses the same unit,
+including HUF. NeoRate multiplies by 100 on request and divides by 100 before validation and
+normalization. The decoded endpoint recipient is retained as the target with
+`ENDPOINT_HUNDREDTH_UNIT_DECODED`; no ISO currency-scale inference or raw-rate reconstruction occurs.
 
 The public quote API limits source amounts to 30 characters and applies product minimums of 0.01 EUR
 and 100 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
@@ -134,20 +135,22 @@ sender/recipient/rate values, wrong directions, invalid plan fee data, and value
 EUR/HUF or HUF/EUR plausibility bounds are rejected. A cached observation after refresh failure is
 explicitly `STALE` and cannot win comparison.
 
-Sender amount and currencies must match exactly. The raw rate is checked against actual
-recipient/sender using a configurable 0.5% relative tolerance only to accommodate the endpoint's
-displayed recipient precision; this tolerance does not alter any amount, rate or fee returned to the
-user. Fee currency checks are exact; source-cost arithmetic uses only the minor-unit tolerance below.
+Decoded sender amount and currencies must match exactly. The decoded endpoint recipient is the
+normalized payout and must be positive and within 0.01 target unit of `sender × rawRate`. Fee
+currency checks are exact; source-cost arithmetic uses only the endpoint-unit tolerance below.
 
-The endpoint serializes monetary display values at currency precision, so accept a difference of at
-most one source-currency minor unit between `fees.cost` and `sender.amount + fees.total`: 1 HUF or
-0.01 EUR, inclusive. Larger differences fail closed. This tolerance validates the response but does
+After decoding, accept a difference of at most one endpoint API unit (0.01 major unit for EUR or HUF)
+between `fees.cost` and `sender.amount + fees.total`, inclusive. Larger differences fail closed. This tolerance validates the response but does
 not change the returned cost used for ranking.
 
-The selected plan's complete endpoint fee object is authoritative for this indicative quote. NeoRate
-requires an exact personal plan match, validates `fees.fx`, `fees.total`, and `fees.cost`, requires a
-consistent source fee currency and total source-side cost, and uses that fee once. It does not
-manually recalculate fair-usage or weekend fees and therefore cannot double-charge them.
+The selected plan's endpoint fee object is authoritative only as a record of what that public source
+returned; it is not assumed to be a complete account fee calculation. NeoRate requires an exact
+personal plan match, validates `fees.fx`, `fees.total`, and `fees.cost`, requires a consistent source
+fee currency and total source-side cost, and uses the source-returned fee once. It does not manually
+recalculate or substitute fair-usage or weekend fees and therefore cannot double-charge them. For a
+source-driven quote, NeoRate derives the separate display field `feePercentage` as
+`fees.total / sender.amount × 100` with decimal.js. It preserves the full decimal string in the API;
+the UI uses adaptive presentation precision so a positive fee cannot round to `0%`.
 
 The endpoint request contains no account identity or prior rolling-30-day usage. Sanitized fixtures
 show complete per-plan fee objects without such context. NeoRate removes the usage input and labels
@@ -162,7 +165,20 @@ Every response exposed only `STANDARD`; NeoRate therefore fails closed for the o
 until the endpoint returns their exact complete plan fee objects. Fixture support is contract coverage,
 not evidence that every plan is currently returned live. The multi-plan
 `huf-eur-plan-fees.json` fixture is explicitly marked `_synthetic: true` and must never be cited as
-live evidence.
+live evidence. The adjacent zero/positive-fee fixtures are also synthetic contract/cache coverage;
+their A/A+1 amounts do not define a real Revolut threshold.
+
+A follow-up 2026-07-16 investigation established that the earlier apparent whole-EUR recipient
+behavior was the same unit error: integer API values had been displayed as major values without
+dividing by 100. EUR→HUF and HUF→EUR remain independent directional prices.
+
+A 2026-07-16 browser/network investigation invalidated the prior weekday fee-gap conclusion. The
+official converter represents displayed `965 EUR` as request/response `sender.amount = 96500`, fee
+`2`, cost `96502`, and HUF recipient `34737505`; these decode to 965 EUR, 0.02 EUR, 965.02 EUR, and
+347,375.05 HUF. NeoRate had sent `965`/`972`, which the endpoint correctly interpreted as 9.65/9.72
+EUR, and had read response integers as major units. Correctly scaled live probes return the dynamic
+Standard fee for the exact amount. No fixed threshold, safety margin, or weekday fee-gap ranking
+exclusion is retained.
 
 The endpoint is undocumented and its contract/access requirements may change. Saved JSON fixtures
 contain only sanitized contract evidence and tests never call Revolut. The Hungarian legal page also describes a conditional migration-linked
@@ -175,6 +191,13 @@ Only the exact lowercase string `true` enables it. `false`, missing, empty, `yes
 all other values safely disable Revolut; an unrecognized non-empty value may emit a server warning
 but cannot throw during registry or route loading or affect other adapters.
 
-`FULL_ALLOWANCE_ASSUMED` is an optimistic best-case constraint, not account-specific evidence. The
-UI keeps such rows visible, labels them as full-allowance-assumed, and qualifies a winning badge as
-“Legjobb indikatív best-case eredmény · teljes keret feltételezve”. App verification remains required.
+`FULL_ALLOWANCE_ASSUMED` remains an optimistic best-case constraint, not account-specific evidence,
+because the public endpoint has no prior rolling-30-day usage input. Correctly decoded weekday fees
+and costs are eligible for ranking; no local fee or threshold is calculated. A winning badge remains
+qualified as “Legjobb indikatív best-case eredmény · teljes keret feltételezve”.
+
+Revolut's public endpoint has not yet demonstrated weekend-fee coverage. During Friday 17:00 ET
+through Sunday 18:00 ET, classified with `America/New_York`, every Revolut plan is therefore visible
+but `EXCLUDED_INCOMPLETE_FEES` with reason `WEEKEND_FEE_UNVERIFIED`. This rule follows daylight-saving
+transitions and must remain until controlled weekend evidence supports a narrower policy. App
+verification remains required in every case.
