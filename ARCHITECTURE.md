@@ -78,29 +78,22 @@ In the foundation mock, `totalCost` equals the explicit fee because no verified 
 available. Future spread-derived cost must be stored as a separately named component before it can
 be included in `totalCost`, with the cost currency and methodology documented.
 
-For Revolut personal quotes, the endpoint sender, raw directional rate, plan fees, and recipient
-display are validated independently. Because the public endpoint may truncate HUF→EUR recipient
-displays to whole EUR, the adapter treats recipient as a consistency signal within one target display
-unit and calculates the indicative target as `sender × rawRate`, rounded down to the target-currency
-scale with decimal.js. The original recipient and `RAW_RATE_ROUNDED_DOWN` method are retained in
-provider details. It never adds a manually calculated fee. Because the public request has no account
+For Revolut personal quotes, the adapter boundary implements a provider-specific fixed-hundredth
+codec. User major-unit source amounts are multiplied by 100 into exact integer API units; endpoint
+`sender`, `recipient`, `fees.fx`, `fees.total`, and `fees.cost` integers are divided by 100 back into
+normal major-unit decimal strings. This applies to HUF as well as EUR and is not an ISO 4217 minor-unit
+rule. The decoded recipient is the normalized target and is checked against `sender × rawRate` within
+0.01 target unit. Provider details retain `ENDPOINT_HUNDREDTH_UNIT_DECODED`. The adapter never adds a
+manually calculated fee. Because the public request has no account
 identity or prior-usage parameter, results explicitly carry `FULL_ALLOWANCE_ASSUMED`; they cannot
 represent consumed rolling 30-day allowance and must be confirmed in the app. Endpoint total fee is
 also normalized as `feePercentage = totalFee / senderAmount × 100` with decimal.js. The API retains
 the unrounded decimal string; only the UI applies presentation rounding and it increases precision
 when necessary so a positive fee never appears as zero.
 
-The official converter UI and the unauthenticated JSON endpoint are not assumed to have identical
-fee coverage. A 2026-07-15 observation showed the UI's first positive Standard fee moving with the
-rate while the same exact source-driven JSON requests returned zero fee. NeoRate preserves the JSON
-endpoint response, labels it best-case/full-allowance-assumed, and does not reconstruct a threshold
-or substitute locally calculated Revolut fees.
-
-Fee completeness is separate from quote availability. A normalized Revolut row carries
-`rankingStatus`, fee-coverage classification, HUF allowance consumption and an optional exclusion
-reason. On weekdays, Standard and Plus quotes whose zero-usage consumption exceeds their documented
-350,000/1,050,000 HUF allowance remain visible but are excluded from best-result ranking. Premium,
-Metal and Ultra have no fair-usage exclusion on weekdays. During Friday 17:00 ET through Sunday
+The earlier converter/endpoint weekday fee discrepancy was an integration-unit error, not a verified
+source gap: requests sent `972` instead of `97200`. Correctly scaled amount-specific responses include
+the dynamic fee. Weekday quotes therefore remain rankable using decoded endpoint costs. During Friday 17:00 ET through Sunday
 18:00 ET, every Revolut plan is excluded because public-endpoint weekend-fee coverage is unverified;
 the window is evaluated in `America/New_York` so DST changes are respected. This guard affects
 ranking only and never fabricates a fee.

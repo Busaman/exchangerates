@@ -29,7 +29,7 @@ describe("bestResultBadgeLabel", () => {
         plan: "STANDARD",
         displayedBaseRate: "392.5",
         endpointRecipientAmount: base.targetAmount,
-        targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+        targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED",
         fxFee: { currency: "EUR", amount: "10" },
         totalFee: { currency: "EUR", amount: "10" },
         feePercentage: "1",
@@ -37,8 +37,6 @@ describe("bestResultBadgeLabel", () => {
         feeCurrency: "EUR",
         totalSourceCost,
         allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
-        allowanceConsumptionHuf: "392500",
-        fairUsageAllowanceHuf: "350000",
         sessionClassification: "WEEKDAY",
         feeCoverage: "ENDPOINT_REPORTED_BEST_CASE",
         indicativeWarning: "Confirm the executable quote in the Revolut app.",
@@ -51,7 +49,7 @@ describe("bestResultBadgeLabel", () => {
     expect(bestResultBadgeLabel(quote, "MOCK_PROVIDER")).toBeNull();
   });
 
-  it("suppresses the best badge for a fee-incomplete quote", () => {
+  it("suppresses the best badge for a weekend-unverified quote", () => {
     const base = createMockQuote({
       providerId: "MOCK_PROVIDER",
       sourceCurrency: "EUR",
@@ -64,14 +62,14 @@ describe("bestResultBadgeLabel", () => {
       provider: { id: "REVOLUT", name: "Revolut Personal (HU)" },
       sourceType: "LIVE_UNOFFICIAL",
       rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
-      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      rankingExclusionReason: "WEEKEND_FEE_UNVERIFIED",
       customerPlan: "STANDARD",
       providerDetails: {
         type: "REVOLUT_PERSONAL",
         plan: "STANDARD",
         displayedBaseRate: "392.5",
         endpointRecipientAmount: base.targetAmount,
-        targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+        targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED",
         fxFee: { currency: "EUR", amount: "0" },
         totalFee: { currency: "EUR", amount: "0" },
         feePercentage: "0",
@@ -79,11 +77,9 @@ describe("bestResultBadgeLabel", () => {
         feeCurrency: "EUR",
         totalSourceCost: { currency: "EUR", amount: "1000" },
         allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
-        allowanceConsumptionHuf: "392500",
-        fairUsageAllowanceHuf: "350000",
-        sessionClassification: "WEEKDAY",
-        feeCoverage: "INCOMPLETE_FAIR_USAGE",
-        feeCoverageWarning: "Known missing fair-usage fee.",
+        sessionClassification: "WEEKEND",
+        feeCoverage: "UNVERIFIED_WEEKEND",
+        feeCoverageWarning: "Weekend fee coverage is not verified.",
         indicativeWarning: "Confirm in app.",
       },
     });

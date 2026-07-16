@@ -7,20 +7,22 @@ if (!enabled) {
 
 const endpoint = "https://www.revolut.com/api/exchange/quote";
 const probes = [
-  { amount: "100000", fromCurrency: "HUF", toCurrency: "EUR" },
-  { amount: "400000", fromCurrency: "HUF", toCurrency: "EUR" },
-  { amount: "1100000", fromCurrency: "HUF", toCurrency: "EUR" },
-  { amount: "100", fromCurrency: "EUR", toCurrency: "HUF" },
-  { amount: "1000", fromCurrency: "EUR", toCurrency: "HUF" },
-  { amount: "3000", fromCurrency: "EUR", toCurrency: "HUF" },
+  { majorAmount: "1000", fromCurrency: "HUF", toCurrency: "EUR" },
+  { majorAmount: "100000", fromCurrency: "HUF", toCurrency: "EUR" },
+  ...["968", "969", "970", "971", "972", "973", "974"].map((majorAmount) => ({
+    majorAmount,
+    fromCurrency: "EUR",
+    toCurrency: "HUF",
+  })),
 ];
 const personalPlans = new Set(["STANDARD", "PLUS", "PREMIUM", "METAL", "ULTRA"]);
 
 let failed = false;
 
 for (const probe of probes) {
+  const apiAmount = new Decimal(probe.majorAmount).times(100).toFixed(0);
   const url = new URL(endpoint);
-  url.searchParams.set("amount", probe.amount);
+  url.searchParams.set("amount", apiAmount);
   url.searchParams.set("country", "HU");
   url.searchParams.set("fromCurrency", probe.fromCurrency);
   url.searchParams.set("isRecipientAmount", "false");
@@ -39,7 +41,7 @@ for (const probe of probes) {
     });
     const contentType = response.headers.get("content-type") ?? "";
     const body = await response.text();
-    const label = `${probe.amount} ${probe.fromCurrency}->${probe.toCurrency}`;
+    const label = `${probe.majorAmount} ${probe.fromCurrency}->${probe.toCurrency}`;
 
     if (!response.ok || !contentType.toLowerCase().includes("application/json")) {
       let safeMessage = "non-JSON or unreadable error response";
@@ -57,24 +59,39 @@ for (const probe of probes) {
     const payload = JSON.parse(body);
     const returnedPlans = Array.isArray(payload?.plans)
       ? payload.plans
-          .map((plan) => plan?.id)
-          .filter((id) => typeof id === "string" && personalPlans.has(id))
+          .filter((plan) => typeof plan?.id === "string" && personalPlans.has(plan.id))
+          .map((plan) => ({
+            id: plan.id,
+            fxFee: new Decimal(plan?.fees?.fx?.amount ?? 0).dividedBy(100).toFixed(),
+            totalFee: new Decimal(plan?.fees?.total?.amount ?? 0).dividedBy(100).toFixed(),
+            totalCost: new Decimal(plan?.fees?.cost?.amount ?? 0).dividedBy(100).toFixed(),
+            feeCurrency: plan?.fees?.total?.currency ?? null,
+          }))
       : [];
     console.log(
       JSON.stringify({
         probe: label,
+        requestApiAmount: apiAmount,
         status: response.status,
-        senderCurrency: payload?.sender?.currency ?? null,
-        recipientCurrency: payload?.recipient?.currency ?? null,
-        positiveRecipient: Number(payload?.recipient?.amount) > 0,
+        sender: {
+          amount: new Decimal(payload?.sender?.amount ?? 0).dividedBy(100).toFixed(),
+          currency: payload?.sender?.currency ?? null,
+        },
+        recipient: {
+          amount: new Decimal(payload?.recipient?.amount ?? 0).dividedBy(100).toFixed(),
+          currency: payload?.recipient?.currency ?? null,
+        },
+        rate: payload?.rate?.rate ?? null,
         rateDirection: `${payload?.rate?.from ?? "?"}->${payload?.rate?.to ?? "?"}`,
-        rateTimestampPresent: Number.isFinite(payload?.rate?.timestamp),
+        rateTimestamp: Number.isFinite(payload?.rate?.timestamp)
+          ? new Date(payload.rate.timestamp).toISOString()
+          : null,
         personalPlans: returnedPlans,
       }),
     );
   } catch (error) {
     console.error(
-      `${probe.amount} ${probe.fromCurrency}->${probe.toCurrency}: ${
+      `${probe.majorAmount} ${probe.fromCurrency}->${probe.toCurrency}: ${
         error instanceof Error ? error.name : "request failed"
       }`,
     );
@@ -83,3 +100,4 @@ for (const probe of probes) {
 }
 
 process.exit(failed ? 1 : 0);
+import Decimal from "decimal.js";

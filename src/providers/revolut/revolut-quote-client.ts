@@ -1,11 +1,5 @@
 import { z } from "zod";
-import {
-  currencyFractionDigits,
-  decimal,
-  decimalToPlainString,
-  isWithinCurrencyMinorUnit,
-  roundDownDecimal,
-} from "@/domain/decimal";
+import { decimal, decimalToPlainString } from "@/domain/decimal";
 import {
   revolutPersonalPlanSchema,
   supportedCurrencyCodeSchema,
@@ -18,12 +12,22 @@ import {
   revolutQuoteClientConfig,
   type RevolutPairKey,
 } from "@/providers/revolut/revolut-config";
+import {
+  fromRevolutApiAmount,
+  RevolutMoneyCodecError,
+  revolutQuoteAmountCacheKey,
+  toRevolutApiAmount,
+} from "@/providers/revolut/revolut-money";
 
 const externalDecimalSchema = z.union([z.number().finite(), z.string().min(1)]);
+const externalApiAmountSchema = z.union([
+  z.number().int().safe().nonnegative(),
+  z.string().regex(/^\d+$/),
+]);
 
 const externalMoneySchema = z
   .object({
-    amount: externalDecimalSchema,
+    amount: externalApiAmountSchema,
     currency: supportedCurrencyCodeSchema,
   })
   .passthrough();
@@ -72,7 +76,7 @@ export type RevolutQuoteObservation = Readonly<{
   sourceAmount: string;
   targetAmount: string;
   endpointRecipientAmount: string;
-  targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN";
+  targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED";
   rate: string;
   rateTimestamp: string;
   retrievedAt: string;
@@ -130,6 +134,19 @@ function plainDecimal(value: string | number, code: string, positive: boolean): 
   }
 }
 
+function decodedApiAmount(value: string | number, code: string, positive: boolean): string {
+  try {
+    const decoded = fromRevolutApiAmount(value);
+    if (positive ? !decimal(decoded).greaterThan(0) : decimal(decoded).lessThan(0)) {
+      throw publicError(code);
+    }
+    return decoded;
+  } catch (error) {
+    if (error instanceof RevolutQuoteClientError) throw error;
+    throw publicError(code);
+  }
+}
+
 function publicError(code: string, retryable = false): RevolutQuoteClientError {
   return new RevolutQuoteClientError(code, retryable);
 }
@@ -172,9 +189,11 @@ export function parseRevolutQuoteResponse({
   }
 
   const requestedAmount = decimal(request.sourceAmount);
-  const senderAmount = decimal(plainDecimal(response.sender.amount, "INVALID_SENDER_AMOUNT", true));
+  const senderAmount = decimal(
+    decodedApiAmount(response.sender.amount, "INVALID_SENDER_AMOUNT", true),
+  );
   const recipientAmount = decimal(
-    plainDecimal(response.recipient.amount, "INVALID_RECIPIENT_AMOUNT", false),
+    decodedApiAmount(response.recipient.amount, "INVALID_RECIPIENT_AMOUNT", true),
   );
   const rate = decimal(plainDecimal(response.rate.rate, "INVALID_RATE", true));
   if (!senderAmount.equals(requestedAmount)) throw publicError("SENDER_AMOUNT_MISMATCH");
@@ -183,27 +202,20 @@ export function parseRevolutQuoteResponse({
   if (rate.lessThan(bounds.minimum) || rate.greaterThan(bounds.maximum)) {
     throw publicError("IMPLAUSIBLE_RATE");
   }
-  const unroundedTargetAmount = senderAmount.times(rate);
-  const recipientDifference = recipientAmount.minus(unroundedTargetAmount).abs();
-  if (
-    recipientDifference.greaterThan(
-      revolutQuoteClientConfig.maximumRecipientDisplayRoundingDifference[request.pair],
-    )
-  ) {
+  const rateDerivedTargetAmount = senderAmount.times(rate);
+  const recipientDifference = recipientAmount.minus(rateDerivedTargetAmount).abs();
+  if (recipientDifference.greaterThan(revolutQuoteClientConfig.maximumDecodedRecipientDifference)) {
     throw publicError("INCONSISTENT_SENDER_RECIPIENT_RATE");
   }
-  const targetAmount = decimal(
-    roundDownDecimal(unroundedTargetAmount, currencyFractionDigits[expected.targetCurrency]),
-  );
-  if (!targetAmount.greaterThan(0)) throw publicError("INVALID_NORMALIZED_TARGET_AMOUNT");
+  const targetAmount = recipientAmount;
 
   const selectedPlan = selectPlan(response.plans, request.plan);
-  const fxFee = decimal(plainDecimal(selectedPlan.fees.fx.amount, "INVALID_FX_FEE", false));
+  const fxFee = decimal(decodedApiAmount(selectedPlan.fees.fx.amount, "INVALID_FX_FEE", false));
   const totalFee = decimal(
-    plainDecimal(selectedPlan.fees.total.amount, "INVALID_TOTAL_FEE", false),
+    decodedApiAmount(selectedPlan.fees.total.amount, "INVALID_TOTAL_FEE", false),
   );
   const totalSourceCost = decimal(
-    plainDecimal(selectedPlan.fees.cost.amount, "INVALID_TOTAL_SOURCE_COST", true),
+    decodedApiAmount(selectedPlan.fees.cost.amount, "INVALID_TOTAL_SOURCE_COST", true),
   );
   const feeCurrencies = [
     selectedPlan.fees.fx.currency,
@@ -214,13 +226,7 @@ export function parseRevolutQuoteResponse({
     throw publicError("INCONSISTENT_FEE_CURRENCY");
   }
   if (totalFee.lessThan(fxFee)) throw publicError("INCONSISTENT_FEE_TOTAL");
-  if (
-    !isWithinCurrencyMinorUnit(
-      totalSourceCost,
-      senderAmount.plus(totalFee),
-      expected.sourceCurrency,
-    )
-  ) {
+  if (totalSourceCost.minus(senderAmount.plus(totalFee)).abs().greaterThan("0.01")) {
     throw publicError("INCONSISTENT_TOTAL_SOURCE_COST");
   }
 
@@ -239,7 +245,7 @@ export function parseRevolutQuoteResponse({
     sourceAmount: decimalToPlainString(senderAmount),
     targetAmount: decimalToPlainString(targetAmount),
     endpointRecipientAmount: decimalToPlainString(recipientAmount),
-    targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+    targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED",
     rate: decimalToPlainString(rate),
     rateTimestamp: rateDate.toISOString(),
     retrievedAt: retrievedAt.toISOString(),
@@ -338,7 +344,7 @@ async function fetchWithTimeout({
 }
 
 function cacheKey(request: RevolutQuoteRequest): string {
-  return `${request.pair}|${decimalToPlainString(decimal(request.sourceAmount))}|${request.plan}`;
+  return `${request.pair}|${revolutQuoteAmountCacheKey(request.sourceAmount)}|${request.plan}`;
 }
 
 function retryableHttpStatus(status: number): boolean {
@@ -393,7 +399,15 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
     request: RevolutQuoteRequest,
     signal?: AbortSignal,
   ): Promise<RevolutQuoteObservation> {
-    const key = cacheKey(request);
+    let key: string;
+    try {
+      key = cacheKey(request);
+    } catch (error) {
+      if (error instanceof RevolutMoneyCodecError) {
+        throw publicError("UNREPRESENTABLE_SOURCE_AMOUNT");
+      }
+      throw error;
+    }
     const requestTime = this.#now();
     const cached = this.#cache.get(key);
     if (cached !== undefined) {
@@ -442,7 +456,7 @@ export class RevolutPublicQuoteClient implements RevolutQuoteClient {
     signal?: AbortSignal,
   ): Promise<RevolutQuoteObservation> {
     const key = cacheKey(request);
-    const sourceUrl = buildRevolutQuoteUrl(request.pair, request.sourceAmount);
+    const sourceUrl = buildRevolutQuoteUrl(request.pair, toRevolutApiAmount(request.sourceAmount));
     const totalAttempts = revolutQuoteClientConfig.retryBackoffMs.length + 1;
     let lastError: RevolutQuoteClientError = publicError("QUOTE_UNAVAILABLE");
 

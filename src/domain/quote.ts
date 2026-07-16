@@ -34,10 +34,7 @@ export const providerErrorCodeSchema = z.enum([
 
 export const revolutPersonalPlanSchema = z.enum(["STANDARD", "PLUS", "PREMIUM", "METAL", "ULTRA"]);
 export const rankingStatusSchema = z.enum(["ELIGIBLE", "EXCLUDED_INCOMPLETE_FEES"]);
-export const rankingExclusionReasonSchema = z.enum([
-  "FAIR_USAGE_FEE_NOT_RETURNED",
-  "WEEKEND_FEE_UNVERIFIED",
-]);
+export const rankingExclusionReasonSchema = z.literal("WEEKEND_FEE_UNVERIFIED");
 
 export const revolutPersonalContextSchema = z
   .object({
@@ -120,7 +117,7 @@ export const availableQuoteSchema = z
         displayedBaseRate: positiveDecimalStringSchema,
         sourceCurrencyPerTargetUnit: positiveDecimalStringSchema.optional(),
         endpointRecipientAmount: monetaryAmountSchema,
-        targetAmountCalculation: z.literal("RAW_RATE_ROUNDED_DOWN"),
+        targetAmountCalculation: z.literal("ENDPOINT_HUNDREDTH_UNIT_DECODED"),
         fxFee: monetaryAmountSchema,
         totalFee: monetaryAmountSchema,
         feePercentage: decimalStringSchema,
@@ -131,14 +128,8 @@ export const availableQuoteSchema = z
         planTooltipLong: z.string().min(1).optional(),
         planTooltipShort: z.string().min(1).optional(),
         allowanceAssumption: z.literal("FULL_ALLOWANCE_ASSUMED"),
-        allowanceConsumptionHuf: positiveDecimalStringSchema,
-        fairUsageAllowanceHuf: positiveDecimalStringSchema.optional(),
         sessionClassification: z.enum(["WEEKDAY", "WEEKEND"]),
-        feeCoverage: z.enum([
-          "ENDPOINT_REPORTED_BEST_CASE",
-          "INCOMPLETE_FAIR_USAGE",
-          "UNVERIFIED_WEEKEND",
-        ]),
+        feeCoverage: z.enum(["ENDPOINT_REPORTED_BEST_CASE", "UNVERIFIED_WEEKEND"]),
         feeCoverageWarning: z.string().min(1).optional(),
         indicativeWarning: z.string().min(1),
       })

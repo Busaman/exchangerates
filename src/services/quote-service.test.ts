@@ -59,7 +59,7 @@ function comparisonQuote({
             plan: "STANDARD" as const,
             displayedBaseRate: "400",
             endpointRecipientAmount: target,
-            targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN" as const,
+            targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED" as const,
             fxFee: { currency: "EUR", amount: onTopFee } as const,
             totalFee: { currency: "EUR", amount: onTopFee } as const,
             feePercentage: calculateSourceSideFeePercentage({
@@ -70,8 +70,6 @@ function comparisonQuote({
             feeCurrency: "EUR" as const,
             totalSourceCost: normalizedTotalSourceCost,
             allowanceAssumption: "FULL_ALLOWANCE_ASSUMED" as const,
-            allowanceConsumptionHuf: targetAmount,
-            fairUsageAllowanceHuf: "350000",
             sessionClassification: "WEEKDAY" as const,
             feeCoverage: "ENDPOINT_REPORTED_BEST_CASE" as const,
             indicativeWarning: "Best-case public quote; verify in app.",
@@ -230,7 +228,7 @@ describe("getQuotes", () => {
     expect(response.bestProviderId).toBe("MOCK_PROVIDER");
   });
 
-  it("keeps an incomplete Revolut quote visible but excludes it from best-result ranking", async () => {
+  it("keeps a weekend-unverified Revolut quote visible but excludes it from ranking", async () => {
     const baseQuote = comparisonQuote({
       providerId: "REVOLUT",
       targetAmount: "400000",
@@ -240,12 +238,12 @@ describe("getQuotes", () => {
     const incompleteQuote = availableQuoteSchema.parse({
       ...baseQuote,
       rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
-      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      rankingExclusionReason: "WEEKEND_FEE_UNVERIFIED",
       providerDetails: {
         ...baseQuote.providerDetails,
-        feeCoverage: "INCOMPLETE_FAIR_USAGE",
-        feeCoverageWarning:
-          "The public Revolut endpoint did not return the applicable fair-usage fee.",
+        sessionClassification: "WEEKEND",
+        feeCoverage: "UNVERIFIED_WEEKEND",
+        feeCoverageWarning: "The endpoint's weekend fee coverage is not verified.",
       },
     });
     const registry = new ProviderAdapterRegistry([
@@ -269,14 +267,14 @@ describe("getQuotes", () => {
     expect(response.quotes[0]).toMatchObject({
       provider: { id: "REVOLUT" },
       rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
-      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      rankingExclusionReason: "WEEKEND_FEE_UNVERIFIED",
     });
     expect(response.bestProviderId).toBeNull();
     expect(response.sourceStatus).toBe("NO_RANKABLE_QUOTES");
     expect(response.warnings).toContain("REVOLUT_FEE_INCOMPLETE");
   });
 
-  it("ranks an eligible provider above a higher-paying fee-incomplete Revolut quote", async () => {
+  it("ranks an eligible provider above a higher-paying weekend-unverified Revolut quote", async () => {
     const eligibleQuote = comparisonQuote({
       providerId: "MOCK_PROVIDER",
       targetAmount: "390000",
@@ -289,10 +287,11 @@ describe("getQuotes", () => {
     const incompleteRevolutQuote = availableQuoteSchema.parse({
       ...baseRevolutQuote,
       rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
-      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      rankingExclusionReason: "WEEKEND_FEE_UNVERIFIED",
       providerDetails: {
         ...baseRevolutQuote.providerDetails,
-        feeCoverage: "INCOMPLETE_FAIR_USAGE",
+        sessionClassification: "WEEKEND",
+        feeCoverage: "UNVERIFIED_WEEKEND",
         feeCoverageWarning: "The source-reported fee data is incomplete.",
       },
     });

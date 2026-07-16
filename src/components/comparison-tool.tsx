@@ -234,9 +234,10 @@ export function ComparisonTool() {
           </label>
           <p className="text-xs leading-5 text-slate-400 sm:col-span-2">
             A nyilvános konverter nem ismeri a fiókod elmúlt 30 napi kerethasználatát. Az API által
-            a kiválasztott csomaghoz és pontos összeghez visszaadott díjat mutatjuk egyszer. Ez
-            best-case adat: az official webes konverter dinamikus keretdíja eltérhet a publikus
-            endpoint válaszától, ezért a személyes végleges ajánlatot ellenőrizd az appban.
+            a kiválasztott csomaghoz és pontos összeghez visszaadott díjat mutatjuk egyszer. A
+            végpont egész pénzértékei fix század-főegységek, amelyeket NeoRate normál EUR/HUF
+            összegekké alakít. Ez best-case adat; a személyes végleges ajánlatot ellenőrizd az
+            appban.
           </p>
         </div>
 
@@ -419,8 +420,8 @@ export function ComparisonTool() {
                             )}
                           </span>
                           <span>
-                            NeoRate normalizálás: nyers irányráta × forrásösszeg, lefelé kerekítve a
-                            célpénznem pontosságára.
+                            NeoRate normalizálás: a Revolut fix század-főegységű recipient összege
+                            normál főegységre visszaalakítva.
                           </span>
                         </span>
                       ) : null}
@@ -510,9 +511,9 @@ export function ComparisonTool() {
           <>
             <strong className="text-amber-100">Revolut:</strong> a nyilvános JSON-konverter ajánlata
             LIVE_UNOFFICIAL besorolású, indikatív best-case eredmény, amely teljes rendelkezésre
-            álló keretet feltételez. A durván kerekített endpoint-recipient helyett a kifizetést a
-            live nyers rátából, a célpénznem pontosságára lefelé kerekítve normalizáljuk. Nem ismeri
-            a fiókod tényleges kerethasználatát; a végrehajtható árfolyamot és díjakat mindig
+            álló keretet feltételez. A Revolut végpont minden pénzösszeget — HUF esetén is — fix
+            század-főegységű egész számban ad vissza; ezt NeoRate normál főegységre alakítja. Nem
+            ismeri a fiókod tényleges kerethasználatát; a végrehajtható árfolyamot és díjakat mindig
             ellenőrizd a Revolut appban.{" "}
           </>
         ) : null}

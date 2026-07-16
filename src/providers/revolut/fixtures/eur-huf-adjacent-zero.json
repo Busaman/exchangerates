@@ -1,7 +1,8 @@
 {
   "_synthetic": true,
-  "sender": { "amount": 980, "currency": "EUR" },
-  "recipient": { "amount": 349664, "currency": "HUF" },
+  "_amountUnit": "ONE_HUNDREDTH_MAJOR_UNIT",
+  "sender": { "amount": 98000, "currency": "EUR" },
+  "recipient": { "amount": 34966400, "currency": "HUF" },
   "rate": {
     "from": "EUR",
     "to": "HUF",
@@ -16,7 +17,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "EUR" },
         "total": { "amount": 0, "currency": "EUR" },
-        "cost": { "amount": 980, "currency": "EUR" }
+        "cost": { "amount": 98000, "currency": "EUR" }
       },
       "tooltipLong": "Synthetic zero-fee response",
       "tooltipShort": "Synthetic zero fee"

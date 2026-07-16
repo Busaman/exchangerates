@@ -1,6 +1,7 @@
 {
-  "sender": { "amount": 100000, "currency": "HUF" },
-  "recipient": { "amount": 277.43, "currency": "EUR" },
+  "_amountUnit": "ONE_HUNDREDTH_MAJOR_UNIT",
+  "sender": { "amount": 10000000, "currency": "HUF" },
+  "recipient": { "amount": 27743, "currency": "EUR" },
   "rate": {
     "from": "HUF",
     "to": "EUR",
@@ -15,7 +16,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "HUF" },
         "total": { "amount": 0, "currency": "HUF" },
-        "cost": { "amount": 100000, "currency": "HUF" }
+        "cost": { "amount": 10000000, "currency": "HUF" }
       },
       "tooltipLong": "A Revolut nem számít fel díjat",
       "tooltipShort": "Díjmentes"
@@ -26,7 +27,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "HUF" },
         "total": { "amount": 0, "currency": "HUF" },
-        "cost": { "amount": 100000, "currency": "HUF" }
+        "cost": { "amount": 10000000, "currency": "HUF" }
       },
       "tooltipLong": "A Revolut nem számít fel díjat",
       "tooltipShort": "Díjmentes"
@@ -37,7 +38,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "HUF" },
         "total": { "amount": 0, "currency": "HUF" },
-        "cost": { "amount": 100000, "currency": "HUF" }
+        "cost": { "amount": 10000000, "currency": "HUF" }
       },
       "tooltipShort": "Díjmentes"
     },
@@ -47,7 +48,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "HUF" },
         "total": { "amount": 0, "currency": "HUF" },
-        "cost": { "amount": 100000, "currency": "HUF" }
+        "cost": { "amount": 10000000, "currency": "HUF" }
       },
       "tooltipShort": "Díjmentes"
     },
@@ -57,7 +58,7 @@
       "fees": {
         "fx": { "amount": 0, "currency": "HUF" },
         "total": { "amount": 0, "currency": "HUF" },
-        "cost": { "amount": 100000, "currency": "HUF" }
+        "cost": { "amount": 10000000, "currency": "HUF" }
       },
       "tooltipShort": "Díjmentes"
     }

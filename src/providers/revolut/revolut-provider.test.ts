@@ -16,12 +16,12 @@ const observation: RevolutQuoteObservation = {
   sourceAmount: "100000",
   targetAmount: "277.43",
   endpointRecipientAmount: "277.43",
-  targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+  targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED",
   rate: "0.0027743132467174",
   rateTimestamp: "2026-07-13T16:02:51.976Z",
   retrievedAt: requestedAt,
   sourceUrl:
-    "https://www.revolut.com/api/exchange/quote?amount=100000&country=HU&fromCurrency=HUF&isRecipientAmount=false&toCurrency=EUR",
+    "https://www.revolut.com/api/exchange/quote?amount=10000000&country=HU&fromCurrency=HUF&isRecipientAmount=false&toCurrency=EUR",
   freshness: "FRESH",
   plan: "STANDARD",
   fxFee: { amount: "0", currency: "HUF" },
@@ -74,15 +74,13 @@ describe("RevolutProviderAdapter", () => {
         displayedBaseRate: "0.0027743132467174",
         sourceCurrencyPerTargetUnit: "360.45",
         endpointRecipientAmount: { amount: "277.43", currency: "EUR" },
-        targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+        targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED",
         fxFee: { amount: "0", currency: "HUF" },
         totalFee: { amount: "0", currency: "HUF" },
         feePercentage: "0",
         feePercentageBasis: "TOTAL_FEE_DIVIDED_BY_SENDER_AMOUNT",
         totalSourceCost: { amount: "100000", currency: "HUF" },
         allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
-        allowanceConsumptionHuf: "100000",
-        fairUsageAllowanceHuf: "350000",
         sessionClassification: "WEEKDAY",
         feeCoverage: "ENDPOINT_REPORTED_BEST_CASE",
         planTooltipShort: "Díjmentes",
@@ -90,15 +88,15 @@ describe("RevolutProviderAdapter", () => {
     });
   });
 
-  it("returns a transparent rate-derived quote when the endpoint rounds a small recipient to zero", async () => {
+  it("returns the exact recipient decoded at the endpoint boundary for a small quote", async () => {
     const lowAmountObservation: RevolutQuoteObservation = {
       ...observation,
       sourceAmount: "100",
-      targetAmount: "0.27",
-      endpointRecipientAmount: "0",
+      targetAmount: "0.28",
+      endpointRecipientAmount: "0.28",
       totalSourceCost: { amount: "100", currency: "HUF" },
       sourceUrl:
-        "https://www.revolut.com/api/exchange/quote?amount=100&country=HU&fromCurrency=HUF&isRecipientAmount=false&toCurrency=EUR",
+        "https://www.revolut.com/api/exchange/quote?amount=10000&country=HU&fromCurrency=HUF&isRecipientAmount=false&toCurrency=EUR",
     };
     const result = await new RevolutProviderAdapter({
       quoteClient: quoteClient(lowAmountObservation),
@@ -106,11 +104,11 @@ describe("RevolutProviderAdapter", () => {
 
     expect(result).toMatchObject({
       kind: "quote",
-      targetAmount: { amount: "0.27", currency: "EUR" },
-      effectiveRate: "0.0027",
+      targetAmount: { amount: "0.28", currency: "EUR" },
+      effectiveRate: "0.0028",
       providerDetails: {
-        endpointRecipientAmount: { amount: "0", currency: "EUR" },
-        targetAmountCalculation: "RAW_RATE_ROUNDED_DOWN",
+        endpointRecipientAmount: { amount: "0.28", currency: "EUR" },
+        targetAmountCalculation: "ENDPOINT_HUNDREDTH_UNIT_DECODED",
         sourceCurrencyPerTargetUnit: "360.45",
       },
     });
@@ -129,7 +127,7 @@ describe("RevolutProviderAdapter", () => {
       totalFee: { amount: "0", currency: "EUR" },
       totalSourceCost: { amount: "1000", currency: "EUR" },
       sourceUrl:
-        "https://www.revolut.com/api/exchange/quote?amount=1000&country=HU&fromCurrency=EUR&isRecipientAmount=false&toCurrency=HUF",
+        "https://www.revolut.com/api/exchange/quote?amount=100000&country=HU&fromCurrency=EUR&isRecipientAmount=false&toCurrency=HUF",
     };
     const result = await new RevolutProviderAdapter({
       quoteClient: quoteClient(eurObservation),
@@ -213,16 +211,13 @@ describe("RevolutProviderAdapter", () => {
 
     expect(result).toMatchObject({
       kind: "quote",
-      rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
-      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      rankingStatus: "ELIGIBLE",
       targetAmount: { amount: "3051.74" },
       explicitFee: { amount: "7500" },
       totalCost: { amount: "7500" },
       providerDetails: {
         totalSourceCost: { amount: "1107500" },
-        allowanceConsumptionHuf: "1100000",
-        fairUsageAllowanceHuf: "350000",
-        feeCoverage: "INCOMPLETE_FAIR_USAGE",
+        feeCoverage: "ENDPOINT_REPORTED_BEST_CASE",
       },
     });
     expect(result.kind === "quote" ? result.rankingEffectiveRate : null).toBe(
@@ -256,16 +251,13 @@ describe("RevolutProviderAdapter", () => {
 
     expect(result).toMatchObject({
       kind: "quote",
-      rankingStatus: "EXCLUDED_INCOMPLETE_FEES",
-      rankingExclusionReason: "FAIR_USAGE_FEE_NOT_RETURNED",
+      rankingStatus: "ELIGIBLE",
       explicitFee: { amount: "0.01", currency: "EUR" },
       providerDetails: {
         totalFee: { amount: "0.01", currency: "EUR" },
         feePercentage: "0.001019367991845056065239551478083588175331",
         feePercentageBasis: "TOTAL_FEE_DIVIDED_BY_SENDER_AMOUNT",
-        allowanceConsumptionHuf: "350020.8",
-        fairUsageAllowanceHuf: "350000",
-        feeCoverage: "INCOMPLETE_FAIR_USAGE",
+        feeCoverage: "ENDPOINT_REPORTED_BEST_CASE",
       },
     });
   });

@@ -13,6 +13,7 @@ import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
 import type { ProviderAdapter, ProviderAdapterContext } from "@/providers/provider-adapter";
 import { createProviderUnavailableResult } from "@/providers/unavailable-result";
 import { buildRevolutQuoteUrl, revolutPairKey } from "@/providers/revolut/revolut-config";
+import { toRevolutApiAmount } from "@/providers/revolut/revolut-money";
 import {
   RevolutQuoteClientError,
   RevolutPublicQuoteClient,
@@ -22,7 +23,7 @@ import { evaluateRevolutFeeCoverage } from "@/providers/revolut/revolut-fee-cove
 
 export const revolutProvider: Provider = { id: "REVOLUT", name: "Revolut Personal (HU)" };
 export const revolutIndicativeWarning =
-  "Indicative public-converter quote. The endpoint may coarsely round its recipient display, so NeoRate derives the displayed payout from the directional raw rate and rounds down to the target-currency scale. The endpoint cannot know prior rolling 30-day account usage and NeoRate assumes the full plan allowance remains. Confirm the executable rate and every fee in the Revolut app before exchanging.";
+  "Indicative public-converter quote. Revolut monetary integers are decoded from fixed hundredths into normal major units at the adapter boundary. The endpoint cannot know prior rolling 30-day account usage and NeoRate assumes the full plan allowance remains. Confirm the executable rate and every fee in the Revolut app before exchanging.";
 
 export type RevolutProviderAdapterDependencies = Readonly<{
   quoteClient?: RevolutQuoteClient;
@@ -40,8 +41,14 @@ export class RevolutProviderAdapter implements ProviderAdapter {
     const request = quoteRequestSchema.parse(requestInput);
     const pair = revolutPairKey(request.sourceCurrency, request.targetCurrency);
     const personalContext = request.providerContexts?.REVOLUT;
-    const sourceUrl =
-      pair === undefined ? undefined : buildRevolutQuoteUrl(pair, request.sourceAmount);
+    let sourceUrl: string | undefined;
+    if (pair !== undefined) {
+      try {
+        sourceUrl = buildRevolutQuoteUrl(pair, toRevolutApiAmount(request.sourceAmount));
+      } catch {
+        sourceUrl = undefined;
+      }
+    }
 
     if (pair === undefined) {
       return createProviderUnavailableResult({
@@ -78,6 +85,19 @@ export class RevolutProviderAdapter implements ProviderAdapter {
           sourceUrl,
         });
       }
+      if (
+        error instanceof RevolutQuoteClientError &&
+        error.code === "UNREPRESENTABLE_SOURCE_AMOUNT"
+      ) {
+        return createProviderUnavailableResult({
+          provider: this.provider,
+          request,
+          reason:
+            "The Revolut public endpoint accepts source amounts representable in exact hundredths only.",
+          sourceId: "revolut-public-json-quote",
+          sourceUrl,
+        });
+      }
       return createProviderUnavailableResult({
         provider: this.provider,
         request,
@@ -100,13 +120,7 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       totalFee: observation.totalFee.amount,
       senderAmount: request.sourceAmount,
     });
-    const feeCoverage = evaluateRevolutFeeCoverage({
-      plan: personalContext.plan,
-      pair,
-      sourceAmount: request.sourceAmount,
-      rate: observation.rate,
-      at: new Date(request.requestedAt),
-    });
+    const feeCoverage = evaluateRevolutFeeCoverage({ at: new Date(request.requestedAt) });
 
     return availableQuoteSchema.parse({
       kind: "quote",
@@ -158,8 +172,6 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         planTooltipLong: observation.planTooltipLong,
         planTooltipShort: observation.planTooltipShort,
         allowanceAssumption: "FULL_ALLOWANCE_ASSUMED",
-        allowanceConsumptionHuf: feeCoverage.allowanceConsumptionHuf,
-        fairUsageAllowanceHuf: feeCoverage.fairUsageAllowanceHuf,
         sessionClassification: feeCoverage.sessionClassification,
         feeCoverage: feeCoverage.feeCoverage,
         feeCoverageWarning: feeCoverage.feeCoverageWarning,

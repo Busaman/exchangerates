@@ -81,12 +81,11 @@ This rounding mode is a mock-fixture policy, not a universal customer-payout rul
 provider adapter must reproduce and test the provider's documented fee, rate and payout rounding
 direction. Until verified, an adapter must return unavailable rather than apply the mock policy.
 
-The Revolut JSON client preserves the endpoint sender, raw directional rate, fees, and original
-recipient display. Live evidence on 2026-07-15 showed that HUF→EUR `recipient.amount` may be truncated
-to whole EUR, including `0` for 100 HUF, despite a positive high-precision raw rate. NeoRate therefore
-calculates the indicative normalized payout as `sourceAmount × rawRate` with decimal.js and rounds
-down to the target-currency scale. The original endpoint recipient and the
-`RAW_RATE_ROUNDED_DOWN` method remain visible; this is not a claim about executable app rounding.
+The Revolut JSON client uses a provider-specific fixed-hundredth codec. Request amounts are exact
+integer hundredths of the displayed major amount, and every endpoint money field uses the same unit,
+including HUF. NeoRate multiplies by 100 on request and divides by 100 before validation and
+normalization. The decoded endpoint recipient is retained as the target with
+`ENDPOINT_HUNDREDTH_UNIT_DECODED`; no ISO currency-scale inference or raw-rate reconstruction occurs.
 
 The public quote API limits source amounts to 30 characters and applies product minimums of 0.01 EUR
 and 100 HUF. This prevents target-currency rounding from presenting a zero or severely distorted
@@ -136,15 +135,12 @@ sender/recipient/rate values, wrong directions, invalid plan fee data, and value
 EUR/HUF or HUF/EUR plausibility bounds are rejected. A cached observation after refresh failure is
 explicitly `STALE` and cannot win comparison.
 
-Sender amount and currencies must match exactly. The endpoint recipient is a coarse display
-consistency signal: it must be within one target display unit of `sender × rawRate`. NeoRate then
-normalizes the indicative payout as `sender × rawRate`, rounded down to EUR 2 or HUF 0 decimal places.
-The raw endpoint recipient is preserved separately. Fee currency checks are exact; source-cost
-arithmetic uses only the minor-unit tolerance below.
+Decoded sender amount and currencies must match exactly. The decoded endpoint recipient is the
+normalized payout and must be positive and within 0.01 target unit of `sender × rawRate`. Fee
+currency checks are exact; source-cost arithmetic uses only the endpoint-unit tolerance below.
 
-The endpoint serializes monetary display values at currency precision, so accept a difference of at
-most one source-currency minor unit between `fees.cost` and `sender.amount + fees.total`: 1 HUF or
-0.01 EUR, inclusive. Larger differences fail closed. This tolerance validates the response but does
+After decoding, accept a difference of at most one endpoint API unit (0.01 major unit for EUR or HUF)
+between `fees.cost` and `sender.amount + fees.total`, inclusive. Larger differences fail closed. This tolerance validates the response but does
 not change the returned cost used for ranking.
 
 The selected plan's endpoint fee object is authoritative only as a record of what that public source
@@ -172,22 +168,17 @@ not evidence that every plan is currently returned live. The multi-plan
 live evidence. The adjacent zero/positive-fee fixtures are also synthetic contract/cache coverage;
 their A/A+1 amounts do not define a real Revolut threshold.
 
-A follow-up no-cookie probe on 2026-07-15 confirmed a contract change/variant: HUF→EUR returned a
-positive directional rate but whole-EUR recipient displays (`0` for 100 HUF, `2` for 1,000 HUF,
-`27` for 10,000 HUF, and `67` around 24,560 HUF). The old 0.5% relative comparison created an
-amount-dependent false rejection threshold. The one-display-unit guard plus transparent
-rate-derived normalization removes that artifact without using the opposite direction or a market
-fallback. EUR→HUF and HUF→EUR remain independent directional prices.
+A follow-up 2026-07-16 investigation established that the earlier apparent whole-EUR recipient
+behavior was the same unit error: integer API values had been displayed as major values without
+dividing by 100. EUR→HUF and HUF→EUR remain independent directional prices.
 
-A second 2026-07-15 measurement found a separate fee-coverage discrepancy. With the official web
-converter set to EUR→HUF, 968–971 EUR displayed `0.00 EUR`, 972 displayed `0.01 EUR`, 973 displayed
-`0.02 EUR`, and 974 displayed `0.03 EUR`; the first positive amount is rate-dependent and is not a
-product constant. Source-driven public JSON requests for the exact 968–974 amounts all returned HTTP
-200 with Standard `fees.fx = 0`, `fees.total = 0`, and `fees.cost = sender.amount`. NeoRate therefore
-must not claim that the endpoint exposes the converter UI's dynamic allowance threshold. The JSON
-fee is preserved as source-reported evidence but is not treated as complete. No fixed or locally
-reconstructed EUR threshold or replacement fee is permitted. Staging must investigate the official
-converter's additional fee context before this limitation can be removed.
+A 2026-07-16 browser/network investigation invalidated the prior weekday fee-gap conclusion. The
+official converter represents displayed `965 EUR` as request/response `sender.amount = 96500`, fee
+`2`, cost `96502`, and HUF recipient `34737505`; these decode to 965 EUR, 0.02 EUR, 965.02 EUR, and
+347,375.05 HUF. NeoRate had sent `965`/`972`, which the endpoint correctly interpreted as 9.65/9.72
+EUR, and had read response integers as major units. Correctly scaled live probes return the dynamic
+Standard fee for the exact amount. No fixed threshold, safety margin, or weekday fee-gap ranking
+exclusion is retained.
 
 The endpoint is undocumented and its contract/access requirements may change. Saved JSON fixtures
 contain only sanitized contract evidence and tests never call Revolut. The Hungarian legal page also describes a conditional migration-linked
@@ -200,14 +191,10 @@ Only the exact lowercase string `true` enables it. `false`, missing, empty, `yes
 all other values safely disable Revolut; an unrecognized non-empty value may emit a server warning
 but cannot throw during registry or route loading or affect other adapters.
 
-`FULL_ALLOWANCE_ASSUMED` is an optimistic best-case constraint, not account-specific evidence. For
-weekday Standard and Plus quotes, NeoRate uses the documented HUF allowance only as a ranking
-eligibility guard: HUF source amount consumes HUF directly; EUR source amount is converted with the
-same directional endpoint rate. Consumption above 350,000 HUF for Standard or 1,050,000 HUF for
-Plus sets `rankingStatus = EXCLUDED_INCOMPLETE_FEES`. The row and source-returned numbers remain
-visible, but it cannot become `bestProviderId`. No fee is calculated or substituted locally. At or
-below the zero-usage boundary, weekday quotes remain eligible and a winning badge is qualified as
-“Legjobb indikatív best-case eredmény · teljes keret feltételezve”.
+`FULL_ALLOWANCE_ASSUMED` remains an optimistic best-case constraint, not account-specific evidence,
+because the public endpoint has no prior rolling-30-day usage input. Correctly decoded weekday fees
+and costs are eligible for ranking; no local fee or threshold is calculated. A winning badge remains
+qualified as “Legjobb indikatív best-case eredmény · teljes keret feltételezve”.
 
 Revolut's public endpoint has not yet demonstrated weekend-fee coverage. During Friday 17:00 ET
 through Sunday 18:00 ET, classified with `America/New_York`, every Revolut plan is therefore visible

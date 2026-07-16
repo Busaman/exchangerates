@@ -47,11 +47,9 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 **Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
 `Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed
 only `STANDARD`; verify whether and under which public request semantics the other four personal plans
-are returned. Then verify below/above-allowance amounts, weekday/weekend behavior, latency,
-rate-limit/error rates, cache transitions and response-contract stability. Determine why the official
-converter UI's dynamic Standard threshold is absent from exact source-driven JSON responses without
-adding cookies, browser identifiers, HTML parsing, or a locally reconstructed threshold. Obtain legal/product
-approval for the undocumented JSON endpoint before production enablement; add telemetry without a
-fallback. The current safety gate keeps above-allowance Standard/Plus and all weekend Revolut rows
-visible but out of best-result ranking. Validate that gate against converter/app samples, including
-an actual Friday 17:00 ET–Sunday 18:00 ET window, before considering any relaxation.**
+are returned. Verify correctly scaled below/above-allowance amounts, actual weekend behavior,
+latency, rate-limit/error rates, cache transitions and response-contract stability. Obtain
+legal/product approval for the undocumented JSON endpoint before production enablement; add telemetry
+without a fallback. Correctly decoded weekday quotes may rank, while the current safety gate keeps
+all weekend Revolut rows visible but out of best-result ranking. Validate that remaining gate against
+converter/app samples during an actual Friday 17:00 ET–Sunday 18:00 ET window before relaxation.**
