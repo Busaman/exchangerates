@@ -227,3 +227,65 @@ separate adapter PR receives legal/product approval, operational review, staging
 explicit `LIVE_UNOFFICIAL`/indicative labeling. A future adapter should begin with a conservative
 60-second amount/pair/country-aware cache. The comparison endpoint is not assumed to be an
 account-specific or payment-method-specific executable quote.
+
+## ADR-013 — ZEN Pro public webpage quote adapter
+
+**Status:** Accepted behind a disabled operational gate (2026-07-17)
+
+Use only `POST https://www.zen.com/landing_currencies.php` for indicative ZEN Pro EUR/HUF and
+HUF/EUR quotes. The request is source-driven form data with `action=change_currency`, allowlisted
+source/target currencies, an exact two-decimal source amount, and `endpoint=change_currency`.
+Successful data is `LIVE_UNOFFICIAL`: the endpoint belongs to the official ZEN.COM public converter
+but is not documented as a supported external API. The official public converter states that the
+displayed rate and zero-additional-fee offer apply to ZEN Pro and that the margin is included in the
+rate. NeoRate preserves `data.exchangeRate` as the primary directional rate and the endpoint's
+rounded `data.targetAmount` as the displayed payout. It never reconstructs the primary rate from
+that rounded payout. For HUF→EUR, `1 / data.exchangeRate` is exposed separately as the HUF cost of
+one EUR; the independently retrieved opposite direction is never replaced with this reciprocal.
+
+The adapter uses a replaceable server-side transport, a 2.5-second source timeout, manual redirects,
+a 64 KiB response limit, strict JSON/Zod validation, decimal.js plausibility and amount/rate
+consistency checks, and no cookies, authorization, Cloudflare tokens, browser identifiers, Referer,
+or browser automation. The `alternatives` collection is intentionally untrusted and ignored; its
+Revolut/Wise rows can never create or modify NeoRate Revolut/Wise provider observations. The endpoint
+does not supply a rate timestamp, so a successful quote explicitly uses retrieval time as its rate
+observation timestamp.
+
+Current server-side evidence is negative. On 2026-07-17, the literal minimal request returned HTTP
+403 in about 106 ms. An identifying NeoRate User-Agent (with or without the public page's semantic
+`X-Requested-With: XMLHttpRequest` header) reached HTTP 200 in roughly 168–259 ms but returned only
+the 16-byte error envelope `{"error":"1..."}`. No cookies or temporary identifiers were tried.
+Therefore `ZEN_ADAPTER_ENABLED` is false by default and only exact lowercase `true` enables network
+retrieval in a controlled environment. Missing, empty, false, or malformed values safely disable
+ZEN. Disabled, 403, timeout, malformed JSON, invalid schema/rate, or inconsistent amount behavior is
+numeric-field-free unavailable; no reference, mock, reciprocal-opposite-direction, or competitor
+fallback is substituted. No last-known-good cache is introduced in this change.
+
+## ADR-014 — Provider-independent plan quotes and default-plan ranking
+
+**Status:** Accepted (2026-07-17)
+
+Rank one default plan per provider: ZEN Free and Revolut Standard. Paid plans are provider details
+only and cannot win the global ranking. A discriminated `planQuotes` union represents live, derived
+and numeric-field-free unavailable plans with subscription, allowance/markup, provenance and ranking
+metadata. Monthly subscriptions are displayed but never allocated wholly to one exchange.
+
+ZEN's official calculator identifies its public quote as ZEN Pro. Official pricing retrieved
+2026-07-17 gives Free/Gold/Platinum/Pro markups 0.50%/0.20%/0%/0%, monthly fees
+0/0.90/6.90/6.90 EUR, and an additional 0.40% outside market hours for all except Pro. NeoRate
+preserves `data.exchangeRate` as the live target-per-source Pro rate and derives with
+`targetRate = proRate / (1 + totalMarkup)`. The Friday 21:00–Sunday 22:00 European-local rule uses
+`Europe/Warsaw` for DST. ZEN now uses pair/amount-specific 60-second fresh, 30-second negative,
+15-minute stale and single-flight caching; this supersedes ADR-013's no-cache foundation note.
+
+Revolut fixtures and the 2026-07-17 live matrix prove fee-on-top semantics inside Standard:
+`recipient ≈ sender × rate` and `totalSourceCost = sender + totalFee`. Standard remains live and is
+never charged twice. They do not prove a common plan-independent base: at the same source timestamp,
+350,000 HUF and 400,000 HUF returned different rates, and all live responses exposed only Standard.
+Plus/Premium/Metal/Ultra are therefore numeric-field-free unavailable in both directions. Official
+subscription and allowance metadata remains visible, but no payout is invented. Until issue #5 is
+resolved, Standard also remains ranking-excluded on weekends. The temporary Hungarian 0.45%
+provision is not manually added.
+
+Both sources remain undocumented `LIVE_UNOFFICIAL` observations, production-default-off, indicative,
+and subject to staging plus legal/product review.

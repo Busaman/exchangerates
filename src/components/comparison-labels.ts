@@ -3,6 +3,7 @@ import type { ProviderIdentifier, QuoteResult } from "@/domain/quote";
 export function isFullAllowanceAssumedQuote(result: QuoteResult): boolean {
   return (
     result.kind === "quote" &&
+    result.providerDetails?.type === "REVOLUT_PERSONAL" &&
     result.providerDetails?.allowanceAssumption === "FULL_ALLOWANCE_ASSUMED"
   );
 }

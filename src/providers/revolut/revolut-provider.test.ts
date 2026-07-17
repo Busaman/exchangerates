@@ -122,7 +122,7 @@ describe("RevolutProviderAdapter", () => {
       targetAmount: "354879",
       endpointRecipientAmount: "354879",
       rate: "354.87926170023974",
-      plan: "METAL",
+      plan: "STANDARD",
       fxFee: { amount: "0", currency: "EUR" },
       totalFee: { amount: "0", currency: "EUR" },
       totalSourceCost: { amount: "1000", currency: "EUR" },
@@ -142,20 +142,23 @@ describe("RevolutProviderAdapter", () => {
     expect(result).toMatchObject({
       kind: "quote",
       targetAmount: { amount: "354879", currency: "HUF" },
-      providerDetails: { plan: "METAL", displayedBaseRate: "354.87926170023974" },
+      customerPlan: "STANDARD",
+      providerDetails: { plan: "STANDARD", displayedBaseRate: "354.87926170023974" },
     });
   });
 
-  it("returns no numeric quote when personal plan context is missing", async () => {
+  it("uses Standard as the default ranking quote when personal plan context is missing", async () => {
     const client = quoteClient();
     const result = await new RevolutProviderAdapter({ quoteClient: client }).getQuote({
       ...contractRequest,
       providerContexts: undefined,
     });
 
-    expect(result.kind).toBe("unavailable");
-    expect(result).not.toHaveProperty("targetAmount");
-    expect(client.getQuote).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ kind: "quote", customerPlan: "STANDARD" });
+    expect(client.getQuote).toHaveBeenCalledWith(
+      expect.objectContaining({ plan: "STANDARD" }),
+      undefined,
+    );
   });
 
   it("does not substitute any fallback after endpoint failure", async () => {
@@ -170,7 +173,7 @@ describe("RevolutProviderAdapter", () => {
     expect(result).not.toHaveProperty("effectiveRate");
   });
 
-  it("returns a plan-specific numeric-field-free reason when the endpoint omits the plan", async () => {
+  it("returns a Standard-specific numeric-field-free reason when the endpoint omits it", async () => {
     const client: RevolutQuoteClient = {
       getQuote: vi.fn(async () =>
         Promise.reject(new RevolutQuoteClientError("SELECTED_PLAN_MISSING")),
@@ -183,7 +186,7 @@ describe("RevolutProviderAdapter", () => {
 
     expect(result).toMatchObject({
       kind: "unavailable",
-      reason: "The public Revolut endpoint did not return the requested PLUS plan.",
+      reason: "The public Revolut endpoint did not return the required STANDARD plan.",
     });
     expect(result).not.toHaveProperty("targetAmount");
     expect(result).not.toHaveProperty("rankingEffectiveRate");

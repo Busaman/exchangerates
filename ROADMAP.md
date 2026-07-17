@@ -21,6 +21,10 @@ after source/legal review. Investigate Gránit Bank only if a reliable legal sou
 The Wise comparison endpoint technical investigation is complete with a
 `PROCEED_WITH_RESTRICTIONS` verdict: the isolated parser and opt-in script are not a provider
 integration. A future Wise adapter requires a separate legal/product-approved PR and staging gate.
+The ZEN Pro transport, Free/Gold/Platinum/Pro plan calculations, cache, validation and UI/API wiring are implemented,
+but the adapter remains disabled by default: current cookie-free server-side probes returned HTTP
+403 or a non-quote error envelope. Re-test only in controlled staging without cookies or anti-bot
+workarounds before considering enablement.
 
 ## 4. Historical rate storage — planned
 
@@ -47,12 +51,21 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
+**Deploy the provider-plan branch to controlled staging with Revolut and ZEN enabled separately.
+Verify ZEN Pro transport plus Free/Gold/Platinum derivation against the official calculator, and
+characterize the Revolut amount-dependent Standard rate before reconsidering paid-plan estimates. Keep both production gates
+off. Resolve issue #5 with simultaneous weekend evidence before any paid weekend Revolut quote.**
+
 **Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
 `Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed
-only `STANDARD`; verify whether and under which public request semantics the other four personal plans
-are returned. Verify correctly scaled below/above-allowance amounts, actual weekend behavior,
+only `STANDARD`; verify the new policy-derived HUF-source paid plans against simultaneous app
+observations. Verify correctly scaled below/above-allowance amounts, actual weekend behavior,
 latency, rate-limit/error rates, cache transitions and response-contract stability. Obtain
 legal/product approval for the undocumented JSON endpoint before production enablement; add telemetry
 without a fallback. Correctly decoded weekday quotes may rank, while the current safety gate keeps
 all weekend Revolut rows visible but out of best-result ranking. Validate that remaining gate against
 converter/app samples during an actual Friday 17:00 ET–Sunday 18:00 ET window before relaxation.**
+
+In parallel, repeat the low-volume ZEN Pro cookie-free transport check in controlled staging. Enable
+`ZEN_ADAPTER_ENABLED=true` there only if the exact form request returns validated `data.exchangeRate`
+and `data.targetAmount`; keep production disabled and do not introduce session/cookie workarounds.

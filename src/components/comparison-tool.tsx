@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import {
   quoteApiErrorResponseSchema,
   quoteApiResponseSchema,
@@ -9,7 +9,6 @@ import {
 } from "@/domain/quote-api";
 import {
   supportedCurrencyCodeSchema,
-  revolutPersonalPlanSchema,
   type RevolutPersonalPlan,
   type QuoteResult,
   type SupportedCurrencyCode,
@@ -25,6 +24,7 @@ import {
   createComparisonRequest,
   type ComparisonProviderSelection,
 } from "@/components/comparison-request";
+import type { PlanQuote } from "@/domain/plan-quote";
 
 const currencyNames = {
   EUR: "EUR · euró",
@@ -41,6 +41,7 @@ const initialRequest = createComparisonRequest({
 
 const providerSelectionNames: Readonly<Record<ComparisonProviderSelection, string>> = {
   REVOLUT: "Revolut",
+  ZEN: "ZEN.COM · Free alapcsomag",
   ALL_REGISTERED: "Összes regisztrált szolgáltató (mockkal)",
 };
 
@@ -58,6 +59,8 @@ type ViewState =
   | { status: "loading" }
   | { status: "success"; data: QuoteApiResponse }
   | { status: "error"; message: string };
+
+type PlanView = "FREE_ONLY" | "ALL_PLANS";
 
 function formatMoney(amount: string, currency: string): string {
   return new Intl.NumberFormat("hu-HU", {
@@ -78,7 +81,93 @@ function labelForStatus(result: QuoteResult): string {
   if (result.sourceType === "LIVE_UNOFFICIAL") {
     return `Élő · LIVE_UNOFFICIAL · ${result.freshness}`;
   }
+  if (result.sourceType === "ESTIMATED") return `Számított · ESTIMATED · ${result.freshness}`;
   return result.sourceType === "MOCK" ? `Mock adat · ${result.freshness}` : result.status;
+}
+
+export function PlanCards({ plans }: { plans: readonly PlanQuote[] }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {plans.map((plan) => (
+        <article
+          key={plan.plan}
+          className="min-w-0 rounded-xl border border-white/10 bg-[#0a1727] p-4 text-sm"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold text-white">{plan.plan}</h3>
+            <span className="rounded-full bg-white/5 px-2 py-1 text-xs text-slate-300">
+              {plan.quoteKind === "live"
+                ? "LIVE"
+                : plan.quoteKind === "derived"
+                  ? "DERIVED"
+                  : "UNAVAILABLE"}
+            </span>
+          </div>
+          <dl className="mt-3 grid gap-2 text-xs text-slate-300">
+            <div className="flex justify-between gap-3">
+              <dt>Havi díj</dt>
+              <dd className="text-right">
+                {formatMoney(plan.monthlyFee.amount, plan.monthlyFee.currency)}
+              </dd>
+            </div>
+            {plan.monthlyAllowance ? (
+              <div className="flex justify-between gap-3">
+                <dt>Havi keret</dt>
+                <dd className="text-right">
+                  {formatMoney(plan.monthlyAllowance.amount, plan.monthlyAllowance.currency)}
+                </dd>
+              </div>
+            ) : null}
+            <div className="flex justify-between gap-3">
+              <dt>Alap / keret feletti / off-market</dt>
+              <dd className="break-all text-right font-mono">
+                {plan.baseMarkup} / {plan.excessMarkup} / {plan.offMarketMarkup}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt>Időablak</dt>
+              <dd className="text-right">{plan.pricingWindow}</dd>
+            </div>
+            {plan.quoteKind !== "unavailable" ? (
+              <>
+                <div className="flex justify-between gap-3">
+                  <dt>Kapott összeg</dt>
+                  <dd className="text-right font-semibold text-white">
+                    {formatMoney(plan.recipientGets.amount, plan.recipientGets.currency)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt>Effektív / inverse ráta</dt>
+                  <dd className="break-all text-right font-mono">
+                    {formatRate(plan.effectiveRate)} / {formatRate(plan.inverseRate)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt>Díj / teljes forrásköltség</dt>
+                  <dd className="text-right">
+                    {formatExactFeeAmount(plan.feeAmount.amount, plan.feeCurrency)} /{" "}
+                    {formatMoney(plan.totalSourceCost.amount, plan.totalSourceCost.currency)}
+                  </dd>
+                </div>
+              </>
+            ) : (
+              <div className="text-amber-200">
+                <dt>Ajánlat</dt>
+                <dd>Élő csomagárfolyam nem számítható biztonságosan.</dd>
+              </div>
+            )}
+          </dl>
+          <p className="mt-3 text-xs leading-5 text-slate-400">{plan.calculationNote}</p>
+          {plan.isPaidPlan ? (
+            <p className="mt-2 text-xs font-medium text-amber-200">
+              A havi díj nincs beleszámítva az egyszeri váltás eredményébe.
+            </p>
+          ) : null}
+          <p className="mt-2 text-xs text-slate-500">Rangsor: {plan.rankingEligibility}</p>
+        </article>
+      ))}
+    </div>
+  );
 }
 
 function formatRate(rate: string): string {
@@ -130,8 +219,17 @@ export function ComparisonTool() {
   const [amount, setAmount] = useState("1000");
   const [providerSelection, setProviderSelection] =
     useState<ComparisonProviderSelection>("REVOLUT");
-  const [revolutPlan, setRevolutPlan] = useState<RevolutPersonalPlan>("STANDARD");
+  const revolutPlan: RevolutPersonalPlan = "STANDARD";
+  const [planView, setPlanView] = useState<PlanView>("FREE_ONLY");
+  const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(new Set());
   const [view, setView] = useState<ViewState>({ status: "loading" });
+
+  useEffect(() => {
+    const saved = window.sessionStorage.getItem("neorate-plan-view");
+    if (saved !== "FREE_ONLY" && saved !== "ALL_PLANS") return;
+    const timeoutId = window.setTimeout(() => setPlanView(saved), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -147,6 +245,20 @@ export function ComparisonTool() {
     );
     return () => controller.abort();
   }, []);
+
+  function selectPlanView(next: PlanView) {
+    setPlanView(next);
+    window.sessionStorage.setItem("neorate-plan-view", next);
+  }
+
+  function toggleProvider(providerId: string) {
+    setExpandedProviders((current) => {
+      const next = new Set(current);
+      if (next.has(providerId)) next.delete(providerId);
+      else next.add(providerId);
+      return next;
+    });
+  }
 
   async function submitComparison(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -216,32 +328,20 @@ export function ComparisonTool() {
               ))}
             </select>
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-300">
-            Revolut személyes csomag
-            <select
-              value={revolutPlan}
-              onChange={(event) =>
-                setRevolutPlan(revolutPersonalPlanSchema.parse(event.target.value))
-              }
-              className="h-11 rounded-lg border border-white/10 bg-[#12233a] px-3 text-white"
-            >
-              {Object.entries(revolutPlanNames).map(([plan, name]) => (
-                <option key={plan} value={plan}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="grid gap-2 text-sm font-medium text-slate-300">
+            Fő rangsor csomagja
+            <div className="flex h-11 items-center rounded-lg border border-white/10 bg-[#12233a] px-3 text-white">
+              {providerSelection === "ZEN" ? "ZEN Free" : "Revolut Standard"}
+            </div>
+          </div>
           <p className="text-xs leading-5 text-slate-400 sm:col-span-2">
-            A nyilvános konverter nem ismeri a fiókod elmúlt 30 napi kerethasználatát. Az API által
-            a kiválasztott csomaghoz és pontos összeghez visszaadott díjat mutatjuk egyszer. A
-            végpont egész pénzértékei fix század-főegységek, amelyeket NeoRate normál EUR/HUF
-            összegekké alakít. Ez best-case adat; a személyes végleges ajánlatot ellenőrizd az
-            appban.
+            {providerSelection === "ZEN"
+              ? "A ZEN Pro nyilvános alapárfolyama indikatív; a Free/Gold/Platinum sorok ebből, a hivatalos felárak alapján számított ajánlatok. Az appban végrehajtható ajánlat eltérhet."
+              : "A fő sor mindig a live Standard quote. A publikus végpont nem bizonyít közös, csomagfüggetlen base rate-et, ezért a fizetős csomagok számszerű érték nélkül, fail-closed állapotban láthatók. A személyes végleges ajánlatot ellenőrizd az appban."}
           </p>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_1.2fr_auto] md:items-end">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto_1fr_1.2fr_auto] lg:items-end">
           <label className="grid gap-2 text-sm font-medium text-slate-300">
             Ebből
             <select
@@ -264,7 +364,7 @@ export function ComparisonTool() {
             type="button"
             onClick={swapCurrencies}
             aria-label="Pénznemek felcserélése"
-            className="mb-0.5 h-11 rounded-lg border border-white/10 px-4 text-lg text-slate-300 hover:bg-white/5 md:w-11 md:px-0"
+            className="mb-0.5 h-11 rounded-lg border border-white/10 px-4 text-lg text-slate-300 hover:bg-white/5 lg:w-11 lg:px-0"
           >
             ⇄
           </button>
@@ -328,6 +428,35 @@ export function ComparisonTool() {
         </p>
       </form>
 
+      <div className="border-b border-white/10 px-5 py-4 sm:px-7">
+        <div
+          role="group"
+          aria-label="Csomagok megjelenítése"
+          className="grid w-full grid-cols-2 rounded-xl border border-white/10 bg-[#091522] p-1 sm:max-w-md"
+        >
+          {(
+            [
+              ["FREE_ONLY", "Ingyenes csomagok"],
+              ["ALL_PLANS", "Minden csomag"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={planView === value}
+              onClick={() => selectPlanView(value)}
+              className={`min-w-0 rounded-lg px-2 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 ${planView === value ? "bg-emerald-300 text-slate-950" : "text-slate-300 hover:bg-white/5"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-slate-400">
+          A provider sorrendjét mindig a Free/Standard alapcsomag adja; a fizetős csomagok nem
+          kapnak külön globális rangot.
+        </p>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left">
           <thead className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-wider text-slate-500">
@@ -342,159 +471,216 @@ export function ComparisonTool() {
           </thead>
           <tbody className="divide-y divide-white/10">
             {results.map((result) => (
-              <tr
-                key={result.provider.id}
-                className={
-                  data?.bestProviderId === result.provider.id ? "bg-emerald-300/[0.035]" : undefined
-                }
-              >
-                <td className="px-5 py-5 sm:px-7">
-                  <div className="font-semibold text-white">{result.provider.name}</div>
-                  {result.kind === "quote" &&
-                  result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
-                    <span className="mt-1 block text-xs text-slate-400">
-                      Személyes csomag: {revolutPlanNames[result.providerDetails.plan]}
-                    </span>
-                  ) : null}
-                  {isFullAllowanceAssumedQuote(result) ? (
-                    <span className="mt-1 block text-xs font-medium text-amber-200">
-                      FULL_ALLOWANCE_ASSUMED · best-case · teljes keret feltételezve
-                    </span>
-                  ) : null}
-                  {isFeeCoverageIncompleteQuote(result) &&
-                  result.kind === "quote" &&
-                  result.providerDetails?.feeCoverageWarning ? (
-                    <span className="mt-2 block max-w-md text-xs leading-5 text-rose-200">
-                      {result.providerDetails.feeCoverageWarning}
-                    </span>
-                  ) : null}
-                  {bestResultBadgeLabel(result, data?.bestProviderId) !== null && (
-                    <span className="mt-1 inline-block text-xs font-medium text-emerald-300">
-                      {bestResultBadgeLabel(result, data?.bestProviderId)}
-                    </span>
-                  )}
-                </td>
-                {result.kind === "quote" ? (
-                  <>
-                    <td className="px-4 py-5 text-lg font-semibold text-white">
-                      {formatMoney(result.targetAmount.amount, result.targetAmount.currency)}
-                    </td>
-                    <td className="px-4 py-5 font-mono text-sm text-slate-300">
-                      {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
-                        <span className="mb-2 grid gap-1 text-xs text-slate-500">
-                          <span>
-                            Irány szerinti nyers ráta: 1 {result.pair.sourceCurrency} ={" "}
-                            {formatRate(result.providerDetails.displayedBaseRate)}{" "}
-                            {result.pair.targetCurrency}
-                          </span>
-                          {result.providerDetails.sourceCurrencyPerTargetUnit ? (
-                            <span className="text-amber-200">
-                              Ugyanez a HUF → EUR irány: 1 EUR ≈{" "}
-                              {formatRate(result.providerDetails.sourceCurrencyPerTargetUnit)} HUF
-                              forrásköltség
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : null}
-                      <span className="block">
-                        Szolgáltatói effektív: 1 {result.pair.sourceCurrency} ={" "}
-                        {formatRate(result.effectiveRate)} {result.pair.targetCurrency}
+              <Fragment key={result.provider.id}>
+                <tr
+                  className={
+                    data?.bestProviderId === result.provider.id
+                      ? "bg-emerald-300/[0.035]"
+                      : undefined
+                  }
+                >
+                  <td className="px-5 py-5 sm:px-7">
+                    <div className="font-semibold text-white">{result.provider.name}</div>
+                    {result.kind === "quote" &&
+                    result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
+                      <span className="mt-1 block text-xs text-slate-400">
+                        Személyes csomag: {revolutPlanNames[result.providerDetails.plan]}
                       </span>
-                      <span
-                        className={`mt-1 block text-xs ${result.rankingStatus === "ELIGIBLE" ? "text-emerald-200" : "text-rose-200"}`}
+                    ) : null}
+                    {result.kind === "quote" && result.providerDetails?.type === "ZEN_PLANS" ? (
+                      <span className="mt-1 block text-xs text-slate-400">
+                        Alapcsomag: {result.providerDetails.defaultPlan}
+                      </span>
+                    ) : null}
+                    {isFullAllowanceAssumedQuote(result) ? (
+                      <span className="mt-1 block text-xs font-medium text-amber-200">
+                        FULL_ALLOWANCE_ASSUMED · best-case · teljes keret feltételezve
+                      </span>
+                    ) : null}
+                    {isFeeCoverageIncompleteQuote(result) &&
+                    result.kind === "quote" &&
+                    result.providerDetails?.type === "REVOLUT_PERSONAL" &&
+                    result.providerDetails?.feeCoverageWarning ? (
+                      <span className="mt-2 block max-w-md text-xs leading-5 text-rose-200">
+                        {result.providerDetails.feeCoverageWarning}
+                      </span>
+                    ) : null}
+                    {bestResultBadgeLabel(result, data?.bestProviderId) !== null && (
+                      <span className="mt-1 inline-block text-xs font-medium text-emerald-300">
+                        {bestResultBadgeLabel(result, data?.bestProviderId)}
+                      </span>
+                    )}
+                    {result.kind === "quote" &&
+                    result.planQuotes !== undefined &&
+                    planView === "FREE_ONLY" ? (
+                      <button
+                        type="button"
+                        aria-expanded={expandedProviders.has(result.provider.id)}
+                        aria-controls={`plans-${result.provider.id}`}
+                        onClick={() => toggleProvider(result.provider.id)}
+                        className="mt-3 block rounded-md border border-white/10 px-2 py-1 text-xs text-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
                       >
-                        {result.rankingStatus === "ELIGIBLE"
-                          ? "Költségnormalizált rangsorolási ráta"
-                          : "Nem rangsorolt endpoint-költségráta"}
-                        : 1 {result.pair.sourceCurrency} = {formatRate(result.rankingEffectiveRate)}{" "}
-                        {result.pair.targetCurrency}
-                      </span>
-                      {result.providerDetails?.type === "REVOLUT_PERSONAL" &&
-                      result.providerDetails.endpointRecipientAmount !== undefined ? (
-                        <span className="mt-2 grid gap-1 text-xs text-slate-500">
-                          <span>
-                            Endpoint recipient kijelzés:{" "}
-                            {formatMoney(
-                              result.providerDetails.endpointRecipientAmount.amount,
-                              result.providerDetails.endpointRecipientAmount.currency,
-                            )}
-                          </span>
-                          <span>
-                            NeoRate normalizálás: a Revolut fix század-főegységű recipient összege
-                            normál főegységre visszaalakítva.
-                          </span>
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-5 text-sm text-slate-300">
-                      {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
-                        <span className="grid gap-1 text-xs">
-                          <span>
-                            FX díj:{" "}
-                            {formatExactFeeAmount(
-                              result.providerDetails.fxFee.amount,
-                              result.providerDetails.feeCurrency,
-                            )}
-                          </span>
-                          <span>
-                            Nyilvános endpoint által visszaadott összes díj:{" "}
-                            {formatExactFeeAmount(
-                              result.providerDetails.totalFee.amount,
-                              result.providerDetails.feeCurrency,
-                            )}
-                          </span>
-                          <span>
-                            Díj aránya a küldött összeghez:{" "}
-                            {result.providerDetails.feePercentage === undefined
-                              ? "Nem elérhető"
-                              : formatFeePercentage(result.providerDetails.feePercentage)}
-                          </span>
-                          <strong className="text-slate-200">
-                            Teljes forrásoldali költség:{" "}
-                            {formatMoney(
-                              result.providerDetails.totalSourceCost.amount,
-                              result.providerDetails.feeCurrency,
-                            )}
-                          </strong>
-                          {result.providerDetails.fxTooltip ? (
-                            <span className="max-w-xs text-slate-400">
-                              {result.providerDetails.fxTooltip}
-                            </span>
-                          ) : null}
-                          {result.providerDetails.planTooltipLong ? (
-                            <span className="max-w-xs text-slate-400">
-                              Endpoint tooltip: {result.providerDetails.planTooltipLong}
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : (
-                        formatMoney(result.explicitFee.amount, result.explicitFee.currency)
-                      )}
-                    </td>
-                  </>
-                ) : (
-                  <td colSpan={3} className="px-4 py-5 text-sm text-slate-500">
-                    {result.reason} Nincs megjeleníthető számszerű ajánlat.
+                        {expandedProviders.has(result.provider.id)
+                          ? "Csomagok bezárása −"
+                          : "Csomagok megnyitása +"}
+                      </button>
+                    ) : null}
                   </td>
-                )}
-                <td className="px-4 py-5">
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${result.kind === "quote" ? "bg-amber-400/10 text-amber-200" : "bg-slate-400/10 text-slate-400"}`}
-                  >
-                    {labelForStatus(result)}
-                  </span>
-                </td>
-                <td className="px-5 py-5 font-mono text-xs text-slate-500 sm:px-7">
                   {result.kind === "quote" ? (
-                    <span className="grid gap-1">
-                      <span>Árfolyam: {formatTimestamp(result.rateTimestamp)}</span>
-                      <span>Lekérés: {formatTimestamp(result.retrievedAt)}</span>
-                    </span>
+                    <>
+                      <td className="px-4 py-5 text-lg font-semibold text-white">
+                        {formatMoney(result.targetAmount.amount, result.targetAmount.currency)}
+                      </td>
+                      <td className="px-4 py-5 font-mono text-sm text-slate-300">
+                        {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
+                          <span className="mb-2 grid gap-1 text-xs text-slate-500">
+                            <span>
+                              Irány szerinti nyers ráta: 1 {result.pair.sourceCurrency} ={" "}
+                              {formatRate(result.providerDetails.displayedBaseRate)}{" "}
+                              {result.pair.targetCurrency}
+                            </span>
+                            {result.providerDetails.sourceCurrencyPerTargetUnit ? (
+                              <span className="text-amber-200">
+                                Ugyanez a HUF → EUR irány: 1 EUR ≈{" "}
+                                {formatRate(result.providerDetails.sourceCurrencyPerTargetUnit)} HUF
+                                forrásköltség
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : null}
+                        {result.providerDetails?.type === "ZEN_PLANS" ? (
+                          <span className="mb-2 grid gap-1 text-xs text-slate-500">
+                            <span>
+                              ZEN irány szerinti ráta: 1 {result.pair.sourceCurrency} ={" "}
+                              {formatRate(result.providerDetails.liveProRate)}{" "}
+                              {result.pair.targetCurrency}
+                            </span>
+                            <span className="text-amber-200">
+                              Reciproka: 1 {result.pair.targetCurrency} ≈{" "}
+                              {formatRate(result.providerDetails.sourceCurrencyPerTargetUnit)}{" "}
+                              {result.pair.sourceCurrency}
+                            </span>
+                          </span>
+                        ) : null}
+                        <span className="block">
+                          Szolgáltatói effektív: 1 {result.pair.sourceCurrency} ={" "}
+                          {formatRate(result.effectiveRate)} {result.pair.targetCurrency}
+                        </span>
+                        <span
+                          className={`mt-1 block text-xs ${result.rankingStatus === "ELIGIBLE" ? "text-emerald-200" : "text-rose-200"}`}
+                        >
+                          {result.rankingStatus === "ELIGIBLE"
+                            ? "Költségnormalizált rangsorolási ráta"
+                            : "Nem rangsorolt endpoint-költségráta"}
+                          : 1 {result.pair.sourceCurrency} ={" "}
+                          {formatRate(result.rankingEffectiveRate)} {result.pair.targetCurrency}
+                        </span>
+                        {result.providerDetails?.type === "REVOLUT_PERSONAL" &&
+                        result.providerDetails.endpointRecipientAmount !== undefined ? (
+                          <span className="mt-2 grid gap-1 text-xs text-slate-500">
+                            <span>
+                              Endpoint recipient kijelzés:{" "}
+                              {formatMoney(
+                                result.providerDetails.endpointRecipientAmount.amount,
+                                result.providerDetails.endpointRecipientAmount.currency,
+                              )}
+                            </span>
+                            <span>
+                              NeoRate normalizálás: a Revolut fix század-főegységű recipient összege
+                              normál főegységre visszaalakítva.
+                            </span>
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-5 text-sm text-slate-300">
+                        {result.providerDetails?.type === "REVOLUT_PERSONAL" ? (
+                          <span className="grid gap-1 text-xs">
+                            <span>
+                              FX díj:{" "}
+                              {formatExactFeeAmount(
+                                result.providerDetails.fxFee.amount,
+                                result.providerDetails.feeCurrency,
+                              )}
+                            </span>
+                            <span>
+                              Nyilvános endpoint által visszaadott összes díj:{" "}
+                              {formatExactFeeAmount(
+                                result.providerDetails.totalFee.amount,
+                                result.providerDetails.feeCurrency,
+                              )}
+                            </span>
+                            <span>
+                              Díj aránya a küldött összeghez:{" "}
+                              {result.providerDetails.feePercentage === undefined
+                                ? "Nem elérhető"
+                                : formatFeePercentage(result.providerDetails.feePercentage)}
+                            </span>
+                            <strong className="text-slate-200">
+                              Teljes forrásoldali költség:{" "}
+                              {formatMoney(
+                                result.providerDetails.totalSourceCost.amount,
+                                result.providerDetails.feeCurrency,
+                              )}
+                            </strong>
+                            {result.providerDetails.fxTooltip ? (
+                              <span className="max-w-xs text-slate-400">
+                                {result.providerDetails.fxTooltip}
+                              </span>
+                            ) : null}
+                            {result.providerDetails.planTooltipLong ? (
+                              <span className="max-w-xs text-slate-400">
+                                Endpoint tooltip: {result.providerDetails.planTooltipLong}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : result.providerDetails?.type === "ZEN_PLANS" ? (
+                          <span className="grid gap-1 text-xs">
+                            <span>
+                              Külön ZEN-díj: {formatMoney("0", result.sourceAmount.currency)}
+                            </span>
+                            <span className="max-w-xs text-slate-400">
+                              A hivatalos nyilvános oldal szerint a ZEN Pro marginja az árfolyamban
+                              van; az endpoint nem ad külön díjmezőt.
+                            </span>
+                          </span>
+                        ) : (
+                          formatMoney(result.explicitFee.amount, result.explicitFee.currency)
+                        )}
+                      </td>
+                    </>
                   ) : (
-                    <span>Lekérés: {formatTimestamp(result.retrievedAt)}</span>
+                    <td colSpan={3} className="px-4 py-5 text-sm text-slate-500">
+                      {result.reason} Nincs megjeleníthető számszerű ajánlat.
+                    </td>
                   )}
-                </td>
-              </tr>
+                  <td className="px-4 py-5">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${result.kind === "quote" ? "bg-amber-400/10 text-amber-200" : "bg-slate-400/10 text-slate-400"}`}
+                    >
+                      {labelForStatus(result)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-5 font-mono text-xs text-slate-500 sm:px-7">
+                    {result.kind === "quote" ? (
+                      <span className="grid gap-1">
+                        <span>Árfolyam: {formatTimestamp(result.rateTimestamp)}</span>
+                        <span>Lekérés: {formatTimestamp(result.retrievedAt)}</span>
+                      </span>
+                    ) : (
+                      <span>Lekérés: {formatTimestamp(result.retrievedAt)}</span>
+                    )}
+                  </td>
+                </tr>
+                {result.kind === "quote" &&
+                result.planQuotes !== undefined &&
+                (planView === "ALL_PLANS" || expandedProviders.has(result.provider.id)) ? (
+                  <tr id={`plans-${result.provider.id}`}>
+                    <td colSpan={6} className="max-w-0 bg-white/[0.018] px-4 py-4 sm:px-7">
+                      <PlanCards plans={result.planQuotes} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -522,6 +708,15 @@ export function ComparisonTool() {
             <strong className="text-rose-200">Hiányos Revolut-díjadat:</strong> legalább egy
             Revolut-sor csak tájékoztató jelleggel látható, és nem vesz részt a legjobb eredmény
             kiválasztásában. A végleges díjat ellenőrizd a Revolut appban.{" "}
+          </>
+        ) : null}
+        {data?.warnings.includes("ZEN_INDICATIVE") ? (
+          <>
+            <strong className="text-amber-100">ZEN:</strong> a nyilvános ZEN.COM webes végpont
+            LIVE_UNOFFICIAL Pro alapadata és az abból számított csomagajánlatok láthatók. Az
+            elsődleges ráta közvetlenül a <code>data.exchangeRate</code> mezőből származik; a
+            kerekített célösszegből nem számoljuk vissza. A végrehajtható ajánlatot mindig
+            ellenőrizd a ZEN.COM appban.{" "}
           </>
         ) : null}
         {view.status === "loading" ? "A quote API válaszára várunk." : null}

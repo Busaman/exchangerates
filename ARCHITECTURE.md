@@ -60,6 +60,17 @@ ranking path, or production feature flag. A future `LIVE_UNOFFICIAL` adapter req
 approved change after the technical, legal, and product restrictions in
 `docs/WISE_ENDPOINT_INVESTIGATION.md` are resolved.
 
+The ZEN Pro adapter is isolated under `src/providers/zen`. It posts source-driven form data only to
+`https://www.zen.com/landing_currencies.php` through a replaceable server-side transport. The
+transport sends JSON accept, form content type, and an identifying NeoRate User-Agent; it never sends
+cookies, authorization, browser/session identifiers, Referer, or Cloudflare tokens. A strict
+2.5-second source timeout, manual redirects, 64 KiB response limit, content-type/JSON validation,
+Zod schemas, decimal.js guardrails and pair/amount/rate consistency checks fail closed. The runtime
+does not call `get_currencies.php`; that endpoint is reserved for reference/history data and is not
+a ZEN Pro customer quote source. Because current cookie-free server-side probes return HTTP 403 or
+a non-quote error envelope, ZEN is registry-disabled unless exact `ZEN_ADAPTER_ENABLED=true` is set
+in a controlled environment.
+
 The Revolut personal adapter is isolated under `src/providers/revolut`. Its dedicated client fetches
 only `GET https://www.revolut.com/api/exchange/quote` with allowlisted `amount`, `country=HU`,
 `fromCurrency`, `isRecipientAmount=false`, and `toCurrency` parameters. It sends JSON accept,
@@ -97,6 +108,15 @@ represent consumed rolling 30-day allowance and must be confirmed in the app. En
 also normalized as `feePercentage = totalFee / senderAmount × 100` with decimal.js. The API retains
 the unrounded decimal string; only the UI applies presentation rounding and it increases precision
 when necessary so a positive fee never appears as zero.
+
+For ZEN Pro, `data.exchangeRate` is the provider's primary directional rate and is never derived
+from the two-decimal endpoint target. The endpoint target remains the customer-visible payout, so
+provider-specific effective rate is `targetAmount / sourceAmount`; its difference from the primary
+rate transparently reflects endpoint payout rounding. The reciprocal is diagnostic display metadata
+only. The official public page states that the ZEN Pro margin is already in the rate and shows zero
+additional ZEN fee; provider details record this disclosure rather than inventing another fee. The
+endpoint has no source timestamp, so retrieval time is explicitly labeled as the rate timestamp
+basis.
 
 The earlier converter/endpoint weekday fee discrepancy was an integration-unit error, not a verified
 source gap: requests sent `972` instead of `97200`. Correctly scaled amount-specific responses include
@@ -146,6 +166,10 @@ The Revolut JSON endpoint is used by an official Revolut webpage but is not docu
 external personal API, so success is always `LIVE_UNOFFICIAL` with the exact request URL, an indicative
 warning and medium reliability. The endpoint's rate timestamp is distinct from NeoRate retrieval time.
 
+The ZEN form endpoint is likewise an undocumented official-webpage source. A validated success is
+`LIVE_UNOFFICIAL`, medium reliability, ZEN Pro base, with the exact source URL and an app-verification
+warning. `alternatives` is outside the trust boundary and never supplies Revolut or Wise data.
+
 `POST /api/v1/quotes` validates a strict request, including a 30-character amount limit and
 currency-specific minimums of 0.01 EUR and 100 HUF, resolves selected adapters through the registry,
 calls them in parallel with per-provider abort/timeout support, validates normalized results, ranks
@@ -189,3 +213,16 @@ controlled release step, not from request handlers. Scheduled ingestion can begi
 and move to a durable queue/worker when rate volume or provider limits require it. Provider adapters,
 cache and ingestion workers can separate into services without changing the normalized domain/API.
 Partition or archive quote history only after measured volume justifies it.
+
+## Provider plan normalization
+
+`src/domain/plan-quote.ts` defines a provider-independent live/derived/unavailable union. Exactly one
+available default plan belongs to each top-level provider quote. The quote service still sorts only
+top-level quotes, so ZEN Free and Revolut Standard determine provider order; plan expansion cannot
+change ranking.
+
+ZEN preserves the live Pro `exchangeRate` and derives Free/Gold/Platinum through official markup
+policy. Cache entries are isolated by canonical amount and pair with 60-second fresh, 30-second
+negative, 15-minute stale and single-flight behavior. Revolut Standard remains unchanged. Fee-on-top
+semantics are proven within Standard, but amount-dependent rates and absent paid-plan responses do
+not prove a common plan-independent base. Every paid plan therefore fails closed without numerics.
