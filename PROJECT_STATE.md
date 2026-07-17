@@ -22,6 +22,9 @@ Last updated: 2026-07-17
   identity, strict response and decimal validation.
 - Failure behavior: numeric-field-free unavailable; no mock, market, reciprocal-opposite-direction,
   or competitor fallback. Cache: 60s fresh, 30s negative, 15m stale, single-flight.
+- Derived payouts use exact decimal multiplication from the Pro rate and official markup; only Pro
+  preserves the endpoint-rounded payout. Rate markups are not represented as fabricated monetary
+  fees. Off-market classification uses request time and stale Free observations cannot rank.
 - Gate: only exact `ZEN_ADAPTER_ENABLED=true` enables retrieval; default is disabled.
 - Current live evidence (2026-07-17): literal minimal request returned HTTP 403 (~106 ms). An
   identifying NeoRate User-Agent reached HTTP 200 (~168–259 ms) but received the 16-byte error
@@ -33,7 +36,9 @@ Last updated: 2026-07-17
 The new ZEN tests cover successful normalization, exact form construction, inverse-rate metadata,
 missing/malformed/non-positive rates, malformed JSON, HTTP 403, timeout, exact amount precision,
 adapter contract compliance, numeric-field-free unavailability, feature-gate safety, and strict
-isolation of the untrusted Revolut/Wise `alternatives` rows.
+isolation of the untrusted Revolut/Wise `alternatives` rows. Plan-policy coverage also pins exact
+derived payout behavior, cache-boundary pricing windows, stale ranking exclusion, and fail-closed
+calculation errors.
 
 ## Plan quote policy
 

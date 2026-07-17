@@ -192,6 +192,20 @@ describe("RevolutProviderAdapter", () => {
     expect(result).not.toHaveProperty("rankingEffectiveRate");
   });
 
+  it("fails closed if an injected client returns a non-Standard observation", async () => {
+    const result = await new RevolutProviderAdapter({
+      quoteClient: quoteClient({ ...observation, plan: "PLUS" }),
+    }).getQuote(contractRequest);
+
+    expect(result).toMatchObject({
+      kind: "unavailable",
+      reason: "The validated Revolut observation did not contain the required STANDARD plan.",
+    });
+    expect(result).not.toHaveProperty("sourceAmount");
+    expect(result).not.toHaveProperty("targetAmount");
+    expect(result).not.toHaveProperty("planQuotes");
+  });
+
   it("preserves STALE endpoint classification without ranking it live", async () => {
     const result = await new RevolutProviderAdapter({
       quoteClient: quoteClient({ ...observation, freshness: "STALE" }),

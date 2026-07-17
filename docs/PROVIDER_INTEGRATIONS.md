@@ -251,8 +251,12 @@ The ZEN public calculator explicitly describes its quote as ZEN Pro. Official pr
 0/0.90/6.90/6.90 EUR, and an off-market +0.40% for all except Pro. Preserve Pro's live
 `data.exchangeRate`; derive target rate as `proRate / (1 + totalMarkup)`. The Friday 21:00–Sunday
 22:00 customer rule is interpreted in `Europe/Warsaw` for DST. Pro is live; all other ZEN plan rows
-are policy-derived. The ZEN cache is exact pair/amount scoped: 60s fresh, 30s negative, 15m stale,
-and single-flight. Competitor alternatives remain untrusted.
+are policy-derived. Pro alone uses the endpoint's rounded target amount; derived payouts are the
+exact decimal.js product `sourceAmount × targetRate`. Rate markups carry no fabricated separate
+monetary fee field. Off-market classification uses the current request timestamp, not a cached
+observation timestamp, and stale Free observations remain visible but ranking-excluded. The ZEN
+cache is exact pair/amount scoped: 60s fresh, 30s negative, 15m stale, and single-flight. Competitor
+alternatives remain untrusted.
 
 For Revolut, fixture reconciliation proves fee-on-top semantics inside Standard. A controlled
 2026-07-17 matrix did not prove a common plan-independent base rate: 350,000 HUF and 400,000 HUF had

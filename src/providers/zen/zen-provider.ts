@@ -81,14 +81,27 @@ export class ZenProviderAdapter implements ProviderAdapter {
       });
     }
 
-    const planQuotes = calculateZenPlanQuotes({
-      liveProRate: observation.exchangeRate,
-      sourceAmount: request.sourceAmount,
-      endpointTargetAmount: observation.targetAmount,
-      sourceCurrency: request.sourceCurrency,
-      targetCurrency: request.targetCurrency,
-      fetchedAt: observation.retrievedAt,
-    });
+    let planQuotes;
+    try {
+      planQuotes = calculateZenPlanQuotes({
+        liveProRate: observation.exchangeRate,
+        sourceAmount: request.sourceAmount,
+        endpointTargetAmount: observation.targetAmount,
+        sourceCurrency: request.sourceCurrency,
+        targetCurrency: request.targetCurrency,
+        fetchedAt: observation.retrievedAt,
+        pricingAt: request.requestedAt,
+        freshness: observation.freshness,
+      });
+    } catch {
+      return createProviderUnavailableResult({
+        provider: this.provider,
+        request,
+        reason: "ZEN plan quotes could not be normalized safely from the validated public quote.",
+        sourceId: zenQuoteSourceId,
+        sourceUrl: observation.sourceUrl,
+      });
+    }
     const defaultPlan = planQuotes.find(
       (planQuote): planQuote is NumericPlanQuote =>
         planQuote.isDefaultPlan && planQuote.quoteKind !== "unavailable",

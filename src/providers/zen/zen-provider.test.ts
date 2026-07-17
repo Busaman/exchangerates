@@ -31,7 +31,6 @@ describe("ZenProviderAdapter", () => {
     expect(result).toMatchObject({
       kind: "quote",
       provider: { id: "ZEN", name: "ZEN.COM" },
-      targetAmount: { amount: "2.73", currency: "EUR" },
       sourceType: "ESTIMATED",
       customerPlan: "Free",
       providerDetails: {
@@ -47,12 +46,24 @@ describe("ZenProviderAdapter", () => {
     );
     expect(result.effectiveRate).toBe(decimalToPlainString(decimal("0.002749").dividedBy("1.005")));
     expect(result.providerDetails.liveProRate).not.toBe(result.effectiveRate);
+    expect(result.targetAmount).toEqual({
+      amount: decimalToPlainString(decimal("1000").times(decimal("0.002749").dividedBy("1.005"))),
+      currency: "EUR",
+    });
     expect(result.planQuotes?.map((plan) => plan.plan)).toEqual([
       "Free",
       "Gold",
       "Platinum",
       "Pro",
     ]);
+    expect(result.planQuotes?.[2]).toMatchObject({
+      plan: "Platinum",
+      recipientGets: { amount: "2.749", currency: "EUR" },
+    });
+    expect(result.planQuotes?.[3]).toMatchObject({
+      plan: "Pro",
+      recipientGets: { amount: "2.74", currency: "EUR" },
+    });
   });
 
   it("ignores third-party alternatives and never emits them as Revolut or Wise provider data", async () => {
@@ -85,4 +96,28 @@ describe("ZenProviderAdapter", () => {
       expect(JSON.stringify(result)).not.toContain("private diagnostic");
     },
   );
+
+  it("fails closed without numeric placeholders when plan normalization fails", async () => {
+    const quoteClient: ZenQuoteClient = {
+      getQuote: async () => ({
+        pair: "HUF-EUR",
+        sourceAmount: "1000",
+        targetAmount: "2.74",
+        exchangeRate: "0",
+        retrievedAt: requestedAt,
+        sourceUrl: "https://www.zen.com/landing_currencies.php",
+        freshness: "FRESH",
+      }),
+    };
+    const result = await new ZenProviderAdapter({ quoteClient }).getQuote(request);
+
+    expect(result).toMatchObject({
+      kind: "unavailable",
+      provider: { id: "ZEN" },
+      reason: "ZEN plan quotes could not be normalized safely from the validated public quote.",
+    });
+    expect(result).not.toHaveProperty("sourceAmount");
+    expect(result).not.toHaveProperty("targetAmount");
+    expect(result).not.toHaveProperty("planQuotes");
+  });
 });

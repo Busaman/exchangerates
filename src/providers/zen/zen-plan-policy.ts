@@ -1,4 +1,4 @@
-import { decimal, decimalToPlainString, roundDownDecimal } from "@/domain/decimal";
+import { decimal, decimalToPlainString } from "@/domain/decimal";
 import { planQuoteSchema, type PlanQuote } from "@/domain/plan-quote";
 import type { SupportedCurrencyCode } from "@/domain/quote";
 import { zenQuoteSourceId } from "@/providers/zen/zen-config";
@@ -48,6 +48,8 @@ export function calculateZenPlanQuotes({
   sourceCurrency,
   targetCurrency,
   fetchedAt,
+  pricingAt = fetchedAt,
+  freshness = "FRESH",
 }: {
   liveProRate: string;
   sourceAmount: string;
@@ -55,22 +57,25 @@ export function calculateZenPlanQuotes({
   sourceCurrency: SupportedCurrencyCode;
   targetCurrency: SupportedCurrencyCode;
   fetchedAt: string;
+  pricingAt?: string;
+  freshness?: "FRESH" | "STALE";
 }): PlanQuote[] {
   const proRate = decimal(liveProRate);
   const source = decimal(sourceAmount);
   if (!proRate.greaterThan(0) || !source.greaterThan(0)) {
     throw new RangeError("ZEN plan derivation requires a positive live Pro rate and source amount");
   }
-  const offMarket = isZenOffMarketWindow(new Date(fetchedAt));
+  const offMarket = isZenOffMarketWindow(new Date(pricingAt));
 
   return zenPlanPolicy.map((policy) => {
     const offMarketMarkup = offMarket && policy.plan !== "Pro" ? decimal("0.004") : decimal(0);
     const totalMarkup = decimal(policy.baseMarkup).plus(offMarketMarkup);
     const effectiveRate = proRate.dividedBy(decimal(1).plus(totalMarkup));
     const inverseRate = decimal(1).dividedBy(effectiveRate);
-    const recipientGets = totalMarkup.equals(0)
-      ? decimalToPlainString(endpointTargetAmount)
-      : roundDownDecimal(source.times(effectiveRate), 2);
+    const recipientGets =
+      policy.plan === "Pro"
+        ? decimalToPlainString(endpointTargetAmount)
+        : decimalToPlainString(source.times(effectiveRate));
     const quoteKind = policy.plan === "Pro" ? "live" : "derived";
 
     return planQuoteSchema.parse({
@@ -88,8 +93,6 @@ export function calculateZenPlanQuotes({
       liveBaseRate: decimalToPlainString(proRate),
       effectiveRate: decimalToPlainString(effectiveRate),
       inverseRate: decimalToPlainString(inverseRate),
-      feeAmount: { currency: sourceCurrency, amount: "0" },
-      feeCurrency: sourceCurrency,
       totalSourceCost: { currency: sourceCurrency, amount: decimalToPlainString(source) },
       recipientGets: { currency: targetCurrency, amount: recipientGets },
       calculationNote:
@@ -103,7 +106,14 @@ export function calculateZenPlanQuotes({
         policySourceUrl: zenPricingPolicyUrl,
       },
       fetchedAt,
-      rankingEligibility: policy.isDefaultPlan ? "DEFAULT_PLAN_ELIGIBLE" : "PLAN_DETAIL_ONLY",
+      rankingEligibility: policy.isDefaultPlan
+        ? freshness === "STALE"
+          ? "EXCLUDED"
+          : "DEFAULT_PLAN_ELIGIBLE"
+        : "PLAN_DETAIL_ONLY",
+      ...(policy.isDefaultPlan && freshness === "STALE"
+        ? { rankingExclusionReason: "A stale ZEN alapmegfigyelés nem vehet részt a rangsorban." }
+        : {}),
     });
   });
 }

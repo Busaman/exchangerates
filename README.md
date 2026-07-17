@@ -180,8 +180,12 @@ A successful ZEN result has top-level plan `Free`, source type `ESTIMATED`, exac
 retrieval timestamp, `providerDetails.type = ZEN_PLANS`, and four provider-independent `planQuotes`.
 The Pro plan preserves the validated `data.exchangeRate` as a `LIVE_UNOFFICIAL` base observation.
 For markup `m`, Free/Gold/Platinum use `targetRate = proRate / (1 + m)` and
-`inverseRate = (1 / proRate) × (1 + m)` with decimal.js. The endpoint target is only a reconciliation
-input. The public source supplies no rate timestamp, so retrieval time is labeled explicitly.
+`inverseRate = (1 / proRate) × (1 + m)` with decimal.js. Pro preserves the endpoint's rounded payout;
+each derived plan preserves the exact `sourceAmount × targetRate` decimal result instead of reusing
+that rounded Pro amount. The markup is embedded in the rate, so derived rows do not claim a separate
+zero-valued monetary fee. The public source supplies no rate timestamp, so retrieval time is labeled
+explicitly. Off-market policy is evaluated at request time even for cached observations, and stale
+Free observations cannot win the ranking.
 
 The server posts only to `https://www.zen.com/landing_currencies.php` using form fields `action`,
 `sourceCurrency`, `targetCurrency`, `amount`, and `endpoint`. It never calls `get_currencies.php` for

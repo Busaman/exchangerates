@@ -97,6 +97,16 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       });
     }
 
+    if (observation.plan !== "STANDARD") {
+      return createProviderUnavailableResult({
+        provider: this.provider,
+        request,
+        reason: "The validated Revolut observation did not contain the required STANDARD plan.",
+        sourceId: "revolut-public-json-quote",
+        sourceUrl: observation.sourceUrl,
+      });
+    }
+
     const effectiveRate = decimalToPlainString(
       decimal(observation.targetAmount).dividedBy(request.sourceAmount),
     );

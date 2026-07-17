@@ -91,6 +91,20 @@ describe("ZEN plan policy", () => {
     expect(changed[0]).toMatchObject({
       effectiveRate: first[0]?.quoteKind === "derived" ? first[0].effectiveRate : "",
     });
+    expect(changed[2]).toMatchObject({
+      plan: "Platinum",
+      quoteKind: "derived",
+      recipientGets: { amount: "274.9", currency: "EUR" },
+    });
+    expect(changed[3]).toMatchObject({
+      plan: "Pro",
+      quoteKind: "live",
+      recipientGets: { amount: "274.01", currency: "EUR" },
+    });
+    for (const plan of changed) {
+      expect(plan).not.toHaveProperty("feeAmount");
+      expect(plan).not.toHaveProperty("feeCurrency");
+    }
     expect(() =>
       calculateZenPlanQuotes({
         liveProRate: "0",
@@ -102,5 +116,49 @@ describe("ZEN plan policy", () => {
       }),
     ).toThrow();
     expect(() => quotes("invalid")).toThrow();
+  });
+
+  it("uses request-time pricing window even when a cached observation predates the boundary", () => {
+    const result = calculateZenPlanQuotes({
+      liveProRate: "0.002749",
+      sourceAmount: "100000",
+      endpointTargetAmount: "274.9",
+      sourceCurrency: "HUF",
+      targetCurrency: "EUR",
+      fetchedAt: "2026-07-17T18:59:30.000Z",
+      pricingAt: "2026-07-17T19:00:01.000Z",
+    });
+
+    expect(result.map(({ pricingWindow }) => pricingWindow)).toEqual([
+      "OFF_MARKET",
+      "OFF_MARKET",
+      "OFF_MARKET",
+      "OFF_MARKET",
+    ]);
+    expect(result.map(({ totalMarkup }) => totalMarkup)).toEqual(["0.009", "0.006", "0.004", "0"]);
+  });
+
+  it("excludes a stale default plan from ranking while retaining transparent plan details", () => {
+    const result = calculateZenPlanQuotes({
+      liveProRate: "0.002749",
+      sourceAmount: "100000",
+      endpointTargetAmount: "274.9",
+      sourceCurrency: "HUF",
+      targetCurrency: "EUR",
+      fetchedAt: "2026-07-17T10:00:00.000Z",
+      pricingAt: "2026-07-17T10:10:00.000Z",
+      freshness: "STALE",
+    });
+
+    expect(result[0]).toMatchObject({
+      plan: "Free",
+      rankingEligibility: "EXCLUDED",
+      rankingExclusionReason: "A stale ZEN alapmegfigyelés nem vehet részt a rangsorban.",
+    });
+    expect(result.slice(1).map(({ rankingEligibility }) => rankingEligibility)).toEqual([
+      "PLAN_DETAIL_ONLY",
+      "PLAN_DETAIL_ONLY",
+      "PLAN_DETAIL_ONLY",
+    ]);
   });
 });

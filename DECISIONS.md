@@ -274,9 +274,14 @@ ZEN's official calculator identifies its public quote as ZEN Pro. Official prici
 2026-07-17 gives Free/Gold/Platinum/Pro markups 0.50%/0.20%/0%/0%, monthly fees
 0/0.90/6.90/6.90 EUR, and an additional 0.40% outside market hours for all except Pro. NeoRate
 preserves `data.exchangeRate` as the live target-per-source Pro rate and derives with
-`targetRate = proRate / (1 + totalMarkup)`. The Friday 21:00–Sunday 22:00 European-local rule uses
-`Europe/Warsaw` for DST. ZEN now uses pair/amount-specific 60-second fresh, 30-second negative,
-15-minute stale and single-flight caching; this supersedes ADR-013's no-cache foundation note.
+`targetRate = proRate / (1 + totalMarkup)`. Pro alone preserves the endpoint's rounded target
+amount. Every derived plan keeps the exact decimal.js result `sourceAmount × targetRate`; it does
+not inherit the rounded Pro payout and does not fabricate a separate zero-valued monetary fee for a
+rate-embedded markup. The Friday 21:00–Sunday 22:00 European-local rule uses `Europe/Warsaw` for DST
+and is evaluated at quote-request time, including when the live observation came from cache. ZEN
+now uses pair/amount-specific 60-second fresh, 30-second negative, 15-minute stale and single-flight
+caching; this supersedes ADR-013's no-cache foundation note. Stale details remain transparent but
+the default Free plan is excluded from ranking.
 
 Revolut fixtures and the 2026-07-17 live matrix prove fee-on-top semantics inside Standard:
 `recipient ≈ sender × rate` and `totalSourceCost = sender + totalFee`. Standard remains live and is

@@ -48,8 +48,8 @@ const numericPlanQuoteFields = {
   liveBaseRate: positiveDecimalStringSchema,
   effectiveRate: positiveDecimalStringSchema,
   inverseRate: positiveDecimalStringSchema,
-  feeAmount: monetaryAmountSchema,
-  feeCurrency: currencyCodeSchema,
+  feeAmount: monetaryAmountSchema.optional(),
+  feeCurrency: currencyCodeSchema.optional(),
   totalSourceCost: positiveMonetaryAmountSchema,
   recipientGets: positiveMonetaryAmountSchema,
 } as const;
@@ -76,11 +76,36 @@ const unavailablePlanQuoteSchema = planQuoteCommonSchema
   })
   .strict();
 
-export const planQuoteSchema = z.discriminatedUnion("quoteKind", [
-  livePlanQuoteSchema,
-  derivedPlanQuoteSchema,
-  unavailablePlanQuoteSchema,
-]);
+export const planQuoteSchema = z
+  .discriminatedUnion("quoteKind", [
+    livePlanQuoteSchema,
+    derivedPlanQuoteSchema,
+    unavailablePlanQuoteSchema,
+  ])
+  .superRefine((quote, context) => {
+    if (quote.quoteKind === "unavailable") return;
+    if ((quote.feeAmount === undefined) !== (quote.feeCurrency === undefined)) {
+      context.addIssue({
+        code: "custom",
+        message: "Plan fee amount and currency must either both be present or both be absent",
+        path: ["feeAmount"],
+      });
+    }
+    if (quote.feeAmount !== undefined && quote.feeAmount.currency !== quote.feeCurrency) {
+      context.addIssue({
+        code: "custom",
+        message: "Plan fee amount currency must match feeCurrency",
+        path: ["feeCurrency"],
+      });
+    }
+    if (quote.rankingEligibility === "EXCLUDED" && quote.rankingExclusionReason === undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Excluded numeric plan quotes require a ranking exclusion reason",
+        path: ["rankingExclusionReason"],
+      });
+    }
+  });
 
 export type PlanQuote = z.infer<typeof planQuoteSchema>;
 export type NumericPlanQuote = Extract<PlanQuote, { quoteKind: "live" | "derived" }>;

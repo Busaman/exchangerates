@@ -222,7 +222,11 @@ top-level quotes, so ZEN Free and Revolut Standard determine provider order; pla
 change ranking.
 
 ZEN preserves the live Pro `exchangeRate` and derives Free/Gold/Platinum through official markup
-policy. Cache entries are isolated by canonical amount and pair with 60-second fresh, 30-second
-negative, 15-minute stale and single-flight behavior. Revolut Standard remains unchanged. Fee-on-top
-semantics are proven within Standard, but amount-dependent rates and absent paid-plan responses do
-not prove a common plan-independent base. Every paid plan therefore fails closed without numerics.
+policy. Pro preserves its endpoint-reported rounded payout; derived plans use the exact decimal
+product of source amount and derived rate. A rate-embedded markup is not mislabeled as a separate
+zero-valued monetary fee. Cache entries are isolated by canonical amount and pair with 60-second
+fresh, 30-second negative, 15-minute stale and single-flight behavior. Pricing-window classification
+uses request time rather than cached retrieval time, and a stale Free plan cannot rank. Revolut
+Standard remains unchanged. Fee-on-top semantics are proven within Standard, but amount-dependent
+rates and absent paid-plan responses do not prove a common plan-independent base. Every paid plan
+therefore fails closed without numerics.

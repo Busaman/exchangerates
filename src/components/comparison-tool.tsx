@@ -145,8 +145,10 @@ export function PlanCards({ plans }: { plans: readonly PlanQuote[] }) {
                 <div className="flex justify-between gap-3">
                   <dt>Díj / teljes forrásköltség</dt>
                   <dd className="text-right">
-                    {formatExactFeeAmount(plan.feeAmount.amount, plan.feeCurrency)} /{" "}
-                    {formatMoney(plan.totalSourceCost.amount, plan.totalSourceCost.currency)}
+                    {plan.feeAmount !== undefined && plan.feeCurrency !== undefined
+                      ? formatExactFeeAmount(plan.feeAmount.amount, plan.feeCurrency)
+                      : "Nincs külön pénzbeli díj (árfolyamba épített felár)"}{" "}
+                    / {formatMoney(plan.totalSourceCost.amount, plan.totalSourceCost.currency)}
                   </dd>
                 </div>
               </>

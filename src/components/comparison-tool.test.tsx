@@ -39,8 +39,6 @@ describe("provider plan UI", () => {
       liveBaseRate: "0.002749",
       effectiveRate: "0.0027435",
       inverseRate: "364.497",
-      feeAmount: { currency: "HUF", amount: "0" },
-      feeCurrency: "HUF",
       totalSourceCost: { currency: "HUF", amount: "100000" },
       recipientGets: { currency: "EUR", amount: "274.35" },
       rankingEligibility: "PLAN_DETAIL_ONLY",
@@ -61,5 +59,6 @@ describe("provider plan UI", () => {
     expect(html).toContain("UNAVAILABLE");
     expect(html).toContain("Élő csomagárfolyam nem számítható biztonságosan");
     expect(html).toContain("A havi díj nincs beleszámítva");
+    expect(html).toContain("Nincs külön pénzbeli díj (árfolyamba épített felár)");
   });
 });
