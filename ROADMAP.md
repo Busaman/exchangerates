@@ -21,10 +21,10 @@ after source/legal review. Investigate Gránit Bank only if a reliable legal sou
 The Wise comparison endpoint technical investigation is complete with a
 `PROCEED_WITH_RESTRICTIONS` verdict: the isolated parser and opt-in script are not a provider
 integration. A future Wise adapter requires a separate legal/product-approved PR and staging gate.
-The ZEN Pro transport, Free/Gold/Platinum/Pro plan calculations, cache, validation and UI/API wiring are implemented,
-but the adapter remains disabled by default: current cookie-free server-side probes returned HTTP
-403 or a non-quote error envelope. Re-test only in controlled staging without cookies or anti-bot
-workarounds before considering enablement.
+The ZEN Pro transport, Free/Gold/Platinum/Pro plan calculations, cache, validation and UI/API wiring
+are implemented. Cookie-free native Node HTTPS probes and a protected Vercel Preview succeeded in
+both directions after the blocked Undici/fetch transport was replaced. The adapter remains disabled
+by default pending legal/product review and longer operational observation.
 
 ## 4. Historical rate storage — planned
 
@@ -51,10 +51,10 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Deploy the provider-plan branch to controlled staging with Revolut and ZEN enabled separately.
-Verify ZEN Pro transport plus Free/Gold/Platinum derivation against the official calculator, and
-characterize the Revolut amount-dependent Standard rate before reconsidering paid-plan estimates. Keep both production gates
-off. Resolve issue #5 with simultaneous weekend evidence before any paid weekend Revolut quote.**
+**Return draft PR #8 for review with the verified native ZEN transport. Keep ZEN production-disabled;
+then run a controlled, longer staging comparison against the official calculator and complete
+legal/product review before any production-enablement decision. Resolve issue #5 with simultaneous
+weekend Revolut evidence before any paid weekend Revolut quote.**
 
 **Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
 `Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed
@@ -66,8 +66,8 @@ without a fallback. Correctly decoded weekday quotes may rank, while the current
 all weekend Revolut rows visible but out of best-result ranking. Validate that remaining gate against
 converter/app samples during an actual Friday 17:00 ET–Sunday 18:00 ET window before relaxation.**
 
-The 2026-07-19 low-volume ZEN Pro check is complete: local Node/curl and protected Vercel Preview
-both returned Cloudflare HTTP 403 in both directions. The temporary Preview flag was removed and
-production remained disabled. Do not introduce session/cookie workarounds. Before continuing PR #8,
-either identify a legitimate minimal cookie-free source or split reusable generic plan architecture
-from the non-operational ZEN runtime.
+The 2026-07-19 ZEN transport follow-up is complete. The public calculator still uses
+`landing_currencies.php`; no session or nonce was required. Native Node HTTPS and curl returned valid
+cookie-free quotes locally, and protected Preview returned valid NeoRate results in both directions.
+The temporary Preview flag was removed and production remained disabled. Do not reintroduce Undici
+fetch or add cookie/challenge workarounds.

@@ -191,9 +191,11 @@ observations cannot win the ranking.
 
 The server posts only to `https://www.zen.com/landing_currencies.php` using form fields `action`,
 `sourceCurrency`, `targetCurrency`, `amount`, and `endpoint`. It never calls `get_currencies.php` for
-quotes and sends no cookies, authorization, Referer, Cloudflare tokens, browser identifiers or
-session data. The client has a replaceable transport, strict timeout/size/content-type/schema/rate
-checks, and no mock, market, competitor or reciprocal-direction fallback.
+quotes. Its native Node HTTPS transport sends ordinary calculator Accept/Accept-Language,
+Origin/Referer, form content type, AJAX marker and an identifying NeoRate User-Agent. It sends no
+cookies, authorization, Cloudflare tokens, browser identifiers or session data and discards response
+cookies. The client has a replaceable transport, strict timeout/size/content-type/schema/rate checks,
+and no mock, market, competitor or reciprocal-direction fallback.
 
 ### Plan display and ranking
 
@@ -262,6 +264,7 @@ pnpm test             # unit tests once
 pnpm test:watch       # unit tests in watch mode
 pnpm test:coverage    # unit test coverage
 pnpm test:revolut:live # explicit live endpoint probe (requires its environment flag)
+pnpm investigate:zen # opt-in, low-volume ZEN transport investigation; never runs in CI
 pnpm investigate:wise # opt-in technical Wise endpoint investigation; never runs in CI
 pnpm test:e2e         # future Playwright suite
 pnpm format           # write formatting
@@ -303,15 +306,13 @@ NeoRate does not hard-code a threshold; it uses the exact amount-specific respon
 `FULL_ALLOWANCE_ASSUMED` because the endpoint has no account-specific rolling-30-day context, and
 final app verification remains required.
 
-ZEN Pro is wired for EUR/HUF and HUF/EUR but remains disabled by default and is not operational.
-A 2026-07-19 cookie-free local matrix tested minimal Accept, Origin, Referer, descriptive User-Agent,
-ordinary AJAX and combined headers in Node, plus a minimal curl control. All eight requests returned
-Cloudflare HTTP 403 with HTML; both directions failed and no redirect occurred. No cookie, temporary
-token, proxy or browser-impersonation workaround is implemented. A protected Vercel Preview in
-`iad1` then returned the same explicit upstream HTTP 403 unavailability for HUF→EUR and EUR→HUF.
-The temporary Preview flag was removed after the test; production was never enabled. An explicit ZEN
-selection remains safely unavailable without numeric placeholders. See
-`docs/ZEN_ENDPOINT_INVESTIGATION.md`.
+ZEN Pro is wired for EUR/HUF and HUF/EUR and remains disabled by default. A 2026-07-19 follow-up
+showed that Undici `fetch` was Cloudflare-blocked while cookie-free curl and Node native HTTPS from
+the same host returned valid JSON. No preliminary page GET, session cookie, nonce or CSRF token was
+required. A five-request local matrix and two-direction protected Vercel Preview smoke test passed.
+The only observed response cookie, `__cf_bm`, was not required and is discarded. The temporary
+Preview flag was removed after the test; production was never enabled. Source fragility and legal/
+product approval remain outstanding. See `docs/ZEN_ENDPOINT_INVESTIGATION.md`.
 
 Wise is not integrated. A 2026-07-16 technical investigation found that Wise's undocumented public
 comparison endpoint was reachable from server-side Node without cookies or a frontend token and

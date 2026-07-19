@@ -194,9 +194,11 @@ retrieved EUR→HUF quote.
 
 The client runs server-side through an injectable transport with a 2.5-second timeout, manual
 redirect handling, 64 KiB response limit, JSON content-type check, strict Zod field validation and
-decimal.js positivity, plausibility, request-amount and target/rate consistency checks. It sends only
-JSON accept, form content type and an identifying NeoRate User-Agent. It must never send or retain
-cookies, authorization, Cloudflare tokens, Referer, browser/session identifiers or personal data.
+decimal.js positivity, plausibility, request-amount and target/rate consistency checks. Its default
+transport is Node native HTTPS and sends the ordinary public-calculator JSON/AJAX accept, Hungarian
+language, form content type, official Origin/Referer and an identifying NeoRate User-Agent. It sends
+no cookies, authorization, Cloudflare clearance data, browser/session identifiers or personal data;
+all response cookies are discarded before parsing.
 
 The `alternatives` array is untrusted comparison content. Ignore it completely for normalization:
 ZEN-hosted Revolut and Wise values are not authoritative Revolut/Wise sources and cannot create,
@@ -210,15 +212,15 @@ The source does not return a rate timestamp. Use retrieval time as both the obse
 and retrieval timestamp while preserving `rateTimestampBasis =
 RETRIEVAL_TIME_SOURCE_HAS_NO_TIMESTAMP`; never imply it came from ZEN's payload.
 
-Current low-volume evidence does not support enablement. On 2026-07-19, six one-variable Node header
-variants and a combined request returned Cloudflare HTTP 403 with HTML; the combined reverse-direction
-request and a minimal curl control did the same. Accept, Origin, calculator Referer, descriptive
-User-Agent, Accept-Language and the ordinary AJAX marker did not produce quote data. No cookie/token,
-proxy or fingerprint workaround was attempted. A protected Vercel Preview in `iad1` then reproduced
-the upstream HTTP 403 in both directions through the NeoRate API. Its temporary Preview flag was
-removed; production remained unchanged. `ZEN_ADAPTER_ENABLED` is therefore disabled by default;
-only exact lowercase `true` enables a controlled-environment probe. Missing, empty, false or
-malformed values disable safely. See `ZEN_ENDPOINT_INVESTIGATION.md` for sanitized evidence.
+The 2026-07-19 follow-up isolated a transport difference rather than a session requirement. Undici
+`fetch` was blocked with Cloudflare HTTP 403, but curl and Node native HTTPS from the same host
+returned valid JSON without a preliminary GET, cookies, nonce or CSRF token. Five local requests and
+two protected Vercel Preview API requests passed across both directions. The only observed response
+cookie was `__cf_bm`; the first request succeeded without it and NeoRate discards it. No cookie/token,
+proxy, challenge or fingerprint workaround was attempted. The temporary Preview flag was removed;
+production remained unchanged. `ZEN_ADAPTER_ENABLED` stays disabled by default; only exact lowercase
+`true` enables a controlled environment. Missing, empty, false or malformed values disable safely.
+See `ZEN_ENDPOINT_INVESTIGATION.md` for sanitized evidence.
 
 ## Wise comparison endpoint — investigation only
 

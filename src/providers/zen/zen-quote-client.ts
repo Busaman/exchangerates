@@ -1,4 +1,6 @@
 import { z } from "zod";
+import https from "node:https";
+import type { IncomingHttpHeaders } from "node:http";
 import { currencyMinorUnit, decimal, decimalPattern, decimalToPlainString } from "@/domain/decimal";
 import type { SupportedCurrencyCode } from "@/domain/quote";
 import {
@@ -59,19 +61,70 @@ export type ZenTransportRequest = Readonly<{
   headers: Readonly<Record<string, string>>;
   body: string;
   signal: AbortSignal;
+  maximumResponseBytes: number;
 }>;
 
 export type ZenQuoteTransport = (request: ZenTransportRequest) => Promise<Response>;
 
-export const fetchZenQuoteTransport: ZenQuoteTransport = async (request) =>
-  fetch(request.url, {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-    signal: request.signal,
-    cache: "no-store",
-    redirect: "manual",
+export function selectZenResponseHeaders(headers: IncomingHttpHeaders): Headers {
+  const selected = new Headers();
+  for (const name of ["content-type", "content-length"] as const) {
+    const value = headers[name];
+    if (typeof value === "string") selected.set(name, value);
+  }
+  return selected;
+}
+
+export const nodeHttpsZenQuoteTransport: ZenQuoteTransport = async (request) => {
+  if (request.url !== zenQuoteEndpoint) {
+    throw new ZenQuoteClientError("NETWORK_ERROR", "ZEN transport rejected an unexpected URL.");
+  }
+
+  return new Promise<Response>((resolve, reject) => {
+    const nativeRequest = https.request(
+      request.url,
+      {
+        method: request.method,
+        headers: {
+          ...request.headers,
+          "Content-Length": Buffer.byteLength(request.body).toString(),
+        },
+        signal: request.signal,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        let responseBytes = 0;
+        response.on("data", (chunk: Buffer) => {
+          responseBytes += chunk.byteLength;
+          if (responseBytes > request.maximumResponseBytes) {
+            nativeRequest.destroy(
+              new ZenQuoteClientError(
+                "RESPONSE_TOO_LARGE",
+                "ZEN response exceeded the size limit.",
+              ),
+            );
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("end", () => {
+          if (response.statusCode === undefined) {
+            reject(new ZenQuoteClientError("NETWORK_ERROR", "ZEN response had no HTTP status."));
+            return;
+          }
+          resolve(
+            new Response(Buffer.concat(chunks), {
+              status: response.statusCode,
+              headers: selectZenResponseHeaders(response.headers),
+            }),
+          );
+        });
+      },
+    );
+    nativeRequest.on("error", reject);
+    nativeRequest.end(request.body);
   });
+};
 
 export type ZenQuoteObservation = Readonly<{
   sourceAmount: string;
@@ -250,7 +303,7 @@ export class ZenPublicQuoteClient implements ZenQuoteClient {
   readonly #inFlight = new Map<string, Promise<ZenQuoteObservation>>();
 
   constructor(dependencies: ZenPublicQuoteClientDependencies = {}) {
-    this.#transport = dependencies.transport ?? fetchZenQuoteTransport;
+    this.#transport = dependencies.transport ?? nodeHttpsZenQuoteTransport;
     this.#timeoutMs = dependencies.timeoutMs ?? zenQuoteTimeoutMs;
     this.#maximumResponseBytes = dependencies.maximumResponseBytes ?? zenQuoteMaximumResponseBytes;
     this.#now = dependencies.now ?? (() => new Date());
@@ -360,12 +413,17 @@ export class ZenPublicQuoteClient implements ZenQuoteClient {
           url: zenQuoteEndpoint,
           method: "POST",
           headers: {
-            Accept: "application/json",
+            Accept: "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "hu-HU,hu;q=0.9",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            Origin: "https://www.zen.com",
+            Referer: "https://www.zen.com/hu/online-valutavalto/",
             "User-Agent": "NeoRate server-side ZEN provider adapter",
+            "X-Requested-With": "XMLHttpRequest",
           },
           body,
           signal: controller.signal,
+          maximumResponseBytes: this.#maximumResponseBytes,
         }),
         abortPromise,
       ]);

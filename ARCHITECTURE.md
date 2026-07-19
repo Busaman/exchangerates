@@ -62,14 +62,17 @@ approved change after the technical, legal, and product restrictions in
 
 The ZEN Pro adapter is isolated under `src/providers/zen`. It posts source-driven form data only to
 `https://www.zen.com/landing_currencies.php` through a replaceable server-side transport. The
-transport sends JSON accept, form content type, and an identifying NeoRate User-Agent; it never sends
-cookies, authorization, browser/session identifiers, Referer, or Cloudflare tokens. A strict
+default transport uses Node's native HTTPS client because controlled evidence showed that Undici
+`fetch` was blocked while native Node HTTPS and curl succeeded from the same host. It sends the
+calculator's ordinary JSON/AJAX accept, language, form content type, official Origin/Referer and an
+identifying NeoRate User-Agent; it never sends or retains cookies, authorization, browser/session
+identifiers, or Cloudflare tokens. Response cookies are discarded before parsing. A strict
 2.5-second source timeout, manual redirects, 64 KiB response limit, content-type/JSON validation,
 Zod schemas, decimal.js guardrails and pair/amount/rate consistency checks fail closed. The runtime
 does not call `get_currencies.php`; that endpoint is reserved for reference/history data and is not
-a ZEN Pro customer quote source. Because current cookie-free server-side probes return HTTP 403 or
-a non-quote error envelope, ZEN is registry-disabled unless exact `ZEN_ADAPTER_ENABLED=true` is set
-in a controlled environment.
+a ZEN Pro customer quote source. Local and protected-Preview smoke tests succeeded in both directions,
+but ZEN remains registry-disabled unless exact `ZEN_ADAPTER_ENABLED=true` is set because the source
+is undocumented and operational/legal review is incomplete.
 
 The Revolut personal adapter is isolated under `src/providers/revolut`. Its dedicated client fetches
 only `GET https://www.revolut.com/api/exchange/quote` with allowlisted `amount`, `country=HU`,

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   formatZenSourceAmount,
+  selectZenResponseHeaders,
   ZenPublicQuoteClient,
   ZenQuoteClientError,
   type ZenQuoteTransport,
@@ -52,10 +53,15 @@ describe("ZenPublicQuoteClient", () => {
       method: "POST",
       body: "action=change_currency&sourceCurrency=HUF&targetCurrency=EUR&amount=1000.00&endpoint=change_currency",
       headers: {
-        Accept: "application/json",
+        Accept: "application/json, text/javascript, */*; q=0.01",
+        "Accept-Language": "hu-HU,hu;q=0.9",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Origin: "https://www.zen.com",
+        Referer: "https://www.zen.com/hu/online-valutavalto/",
         "User-Agent": "NeoRate server-side ZEN provider adapter",
+        "X-Requested-With": "XMLHttpRequest",
       },
+      maximumResponseBytes: 64 * 1024,
     });
     expect(capturedRequest).not.toHaveProperty("headers.Cookie");
     expect(capturedRequest).not.toHaveProperty("headers.Authorization");
@@ -105,6 +111,56 @@ describe("ZenPublicQuoteClient", () => {
     await expect(
       client.getQuote({ sourceCurrency: "HUF", targetCurrency: "EUR", sourceAmount: "1000" }),
     ).rejects.toMatchObject({ code: "HTTP_429" });
+  });
+
+  it("rejects challenge HTML, redirects and oversized response bodies", async () => {
+    const challenge = new ZenPublicQuoteClient({
+      transport: async () =>
+        new Response("<html>Just a moment</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    });
+    const redirected = new ZenPublicQuoteClient({
+      transport: async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://www.zen.com/challenge" },
+        }),
+    });
+    const oversized = new ZenPublicQuoteClient({
+      maximumResponseBytes: 10,
+      transport: async () =>
+        new Response(fixture, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    });
+    const input = {
+      sourceCurrency: "HUF" as const,
+      targetCurrency: "EUR" as const,
+      sourceAmount: "1000",
+    };
+
+    await expect(challenge.getQuote(input)).rejects.toMatchObject({ code: "INVALID_CONTENT_TYPE" });
+    await expect(redirected.getQuote(input)).rejects.toMatchObject({ code: "HTTP_ERROR" });
+    await expect(oversized.getQuote(input)).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
+  });
+
+  it("drops every response cookie, including cf_clearance and bot-management cookies", () => {
+    const headers = selectZenResponseHeaders({
+      "content-type": "application/json; charset=UTF-8",
+      "content-length": "42",
+      "set-cookie": [
+        "cf_clearance=synthetic-clearance; Secure",
+        "__cf_bm=synthetic-bot-cookie; Secure",
+        "PHPSESSID=synthetic-session; HttpOnly",
+      ],
+    });
+
+    expect(headers.get("content-type")).toBe("application/json; charset=UTF-8");
+    expect(headers.get("content-length")).toBe("42");
+    expect(headers.has("set-cookie")).toBe(false);
   });
 
   it("uses fresh cache and single-flight only for the identical canonical amount", async () => {

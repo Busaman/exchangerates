@@ -244,22 +244,27 @@ that rounded payout. For HUF→EUR, `1 / data.exchangeRate` is exposed separatel
 one EUR; the independently retrieved opposite direction is never replaced with this reciprocal.
 
 The adapter uses a replaceable server-side transport, a 2.5-second source timeout, manual redirects,
-a 64 KiB response limit, strict JSON/Zod validation, decimal.js plausibility and amount/rate
-consistency checks, and no cookies, authorization, Cloudflare tokens, browser identifiers, Referer,
-or browser automation. The `alternatives` collection is intentionally untrusted and ignored; its
+a 64 KiB response limit, strict JSON/Zod validation, and decimal.js plausibility and amount/rate
+consistency checks. The default transport is Node's native HTTPS client and sends only the ordinary
+public-calculator JSON/AJAX headers, official Origin/Referer and an identifying NeoRate User-Agent.
+It sends no cookies, authorization, Cloudflare clearance data, browser identifiers or browser
+automation, and discards every response cookie. The `alternatives` collection is intentionally untrusted and ignored; its
 Revolut/Wise rows can never create or modify NeoRate Revolut/Wise provider observations. The endpoint
 does not supply a rate timestamp, so a successful quote explicitly uses retrieval time as its rate
 observation timestamp.
 
-Current server-side evidence is negative. On 2026-07-17, the literal minimal request returned HTTP
-403 in about 106 ms. An identifying NeoRate User-Agent (with or without the public page's semantic
-`X-Requested-With: XMLHttpRequest` header) reached HTTP 200 in roughly 168–259 ms but returned only
-the 16-byte error envelope `{"error":"1..."}`. No cookies or temporary identifiers were tried.
-Therefore `ZEN_ADAPTER_ENABLED` is false by default and only exact lowercase `true` enables network
-retrieval in a controlled environment. Missing, empty, false, or malformed values safely disable
-ZEN. Disabled, 403, timeout, malformed JSON, invalid schema/rate, or inconsistent amount behavior is
-numeric-field-free unavailable; no reference, mock, reciprocal-opposite-direction, or competitor
-fallback is substituted. No last-known-good cache is introduced in this change.
+The 2026-07-19 follow-up established the transport boundary precisely. Undici `fetch` received a
+Cloudflare 403 for both the initial public-page GET and quote POST. From the same Windows host, curl
+and Node's native `https.request` returned HTTP 200 JSON without a preliminary GET, cookie, CSRF
+token or nonce. A protected Vercel Preview in `iad1` then returned valid quotes in both directions
+through the native transport. The endpoint issued a `__cf_bm` response cookie, but the first request
+had already succeeded without it; NeoRate classifies and discards it. Therefore no anonymous session
+flow is implemented. `ZEN_ADAPTER_ENABLED` remains false by default and only exact lowercase `true`
+enables network retrieval in a controlled environment. Missing, empty, false, or malformed values
+safely disable ZEN. Disabled, 403, timeout, malformed JSON, invalid schema/rate, or inconsistent
+amount behavior is numeric-field-free unavailable; no reference, mock, reciprocal-opposite-direction,
+or competitor fallback is substituted. Amount/pair-specific fresh, negative, stale and single-flight
+caches remain separate from transport state.
 
 ## ADR-014 — Provider-independent plan quotes and default-plan ranking
 
