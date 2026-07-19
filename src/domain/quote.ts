@@ -106,7 +106,7 @@ const zenProviderDetailsSchema = z
     liveProRate: positiveDecimalStringSchema,
     sourceCurrencyPerTargetUnit: positiveDecimalStringSchema,
     endpointProTargetAmount: positiveMonetaryAmountSchema,
-    targetAmountCalculation: z.literal("ENDPOINT_REPORTED"),
+    targetAmountCalculation: z.literal("POLICY_DERIVED_TARGET_CURRENCY_ROUND_DOWN"),
     feeDisclosure: z.literal("ZERO_ADDITIONAL_ZEN_FEE_PUBLIC_PAGE"),
     rateTimestampBasis: z.literal("RETRIEVAL_TIME_SOURCE_HAS_NO_TIMESTAMP"),
     pricingPolicyRetrievedAt: z.iso.date(),

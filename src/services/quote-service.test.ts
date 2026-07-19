@@ -163,6 +163,48 @@ describe("getQuotes", () => {
     expect(response.issues[0]?.kind).toBe("unavailable");
   });
 
+  it("allows a fresh eligible ESTIMATED default-plan quote to populate bestProviderId", async () => {
+    const base = createMockQuote({
+      providerId: "MOCK_PROVIDER",
+      sourceCurrency: "HUF",
+      targetCurrency: "EUR",
+      sourceAmount: "100000",
+      requestedAt: generatedAt,
+    });
+    const estimated = availableQuoteSchema.parse({
+      ...base,
+      provider: { id: "ZEN", name: "ZEN.COM" },
+      sourceType: "ESTIMATED",
+      sourceId: "zen-estimated-ranking-test",
+      disclaimer: "Estimated from a fresh live observation and published policy.",
+    });
+    const registry = new ProviderAdapterRegistry([
+      {
+        status: "SUPPORTED",
+        adapter: customAdapter(estimated.provider, async () => estimated),
+      },
+    ]);
+
+    const response = await getQuotes(
+      {
+        sourceCurrency: "HUF",
+        targetCurrency: "EUR",
+        sourceAmount: "100000",
+        providers: ["ZEN"],
+        customerPlan: null,
+      },
+      { ...deterministicDependencies, registry },
+    );
+
+    expect(response.bestProviderId).toBe("ZEN");
+    expect(response.quotes[0]).toMatchObject({
+      provider: { id: "ZEN" },
+      sourceType: "ESTIMATED",
+      freshness: "FRESH",
+      rankingStatus: "ELIGIBLE",
+    });
+  });
+
   it("ranks a fee-deducted quote above a higher payout with worse fee-on-top cost", async () => {
     const feeDeducted = comparisonQuote({
       providerId: "MOCK_PROVIDER",

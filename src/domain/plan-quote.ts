@@ -64,6 +64,7 @@ const livePlanQuoteSchema = planQuoteCommonSchema
 const derivedPlanQuoteSchema = planQuoteCommonSchema
   .extend({
     quoteKind: z.literal("derived"),
+    calculationRate: positiveDecimalStringSchema,
     ...numericPlanQuoteFields,
   })
   .strict();

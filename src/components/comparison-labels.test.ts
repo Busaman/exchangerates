@@ -5,6 +5,24 @@ import { availableQuoteSchema } from "@/domain/quote";
 import { createMockQuote } from "@/providers/mock-provider";
 
 describe("bestResultBadgeLabel", () => {
+  it("qualifies an ESTIMATED provider winner as estimated and indicative", () => {
+    const base = createMockQuote({
+      providerId: "MOCK_PROVIDER",
+      sourceCurrency: "EUR",
+      targetCurrency: "HUF",
+      sourceAmount: "1000",
+      requestedAt: "2026-07-13T12:00:00.000Z",
+    });
+    const quote = availableQuoteSchema.parse({
+      ...base,
+      provider: { id: "ZEN", name: "ZEN.COM" },
+      sourceType: "ESTIMATED",
+      disclaimer: "Estimated from a live Pro rate and official public markup policy.",
+    });
+
+    expect(bestResultBadgeLabel(quote, "ZEN")).toBe("Legjobb elérhető becsült indikatív eredmény");
+  });
+
   it("qualifies a FULL_ALLOWANCE_ASSUMED Revolut best result", () => {
     const base = createMockQuote({
       providerId: "MOCK_PROVIDER",

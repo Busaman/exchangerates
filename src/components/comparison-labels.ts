@@ -25,6 +25,9 @@ export function bestResultBadgeLabel(
   if (isFullAllowanceAssumedQuote(result)) {
     return "Legjobb indikatív best-case eredmény · teljes keret feltételezve";
   }
+  if (result.sourceType === "ESTIMATED") {
+    return "Legjobb elérhető becsült indikatív eredmény";
+  }
   return result.sourceType === "MOCK"
     ? "Legjobb elérhető mock eredmény"
     : "Legjobb elérhető indikatív eredmény";

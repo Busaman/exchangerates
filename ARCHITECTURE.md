@@ -118,6 +118,14 @@ additional ZEN fee; provider details record this disclosure rather than inventin
 endpoint has no source timestamp, so retrieval time is explicitly labeled as the rate timestamp
 basis.
 
+ZEN policy-derived plans keep a separate `calculationRate`. NeoRate interprets the public policy
+phrase “ZEN Rate + X%” as `proRate / (1 + markup)`; this is an estimate, not a claim that an executable
+Free/Gold/Platinum quote validated the formula. The alternative `proRate × (1 - markup)` is retained
+as an unresolved evidence question. Derived payouts use decimal.js `ROUND_DOWN` at the target scale
+(EUR 2, HUF 0), and their effective rate is recomputed as `roundedTargetAmount / sourceAmount`.
+The official off-market wording names CET explicitly, so the interval is fixed UTC+1 year-round,
+not an IANA European timezone that shifts in summer.
+
 The earlier converter/endpoint weekday fee discrepancy was an integration-unit error, not a verified
 source gap: requests sent `972` instead of `97200`. Correctly scaled amount-specific responses include
 the dynamic fee. Weekday quotes therefore remain rankable using decoded endpoint costs. During Friday 17:00 ET through Sunday
@@ -134,6 +142,10 @@ their original meanings. Present-but-malformed, non-positive, or wrong-currency 
 a provider-invalid response; fallback applies only when that provider-specific field is absent.
 Only fresh `AVAILABLE` quotes with `rankingStatus = ELIGIBLE` enter this sort. If visible quotes exist
 but all are excluded or stale, the API returns `NO_RANKABLE_QUOTES` and `bestProviderId = null`.
+Source type `ESTIMATED` does not automatically exclude a quote: a fresh, available, method-disclosed
+default-plan estimate may populate `bestProviderId` when its evidence-specific eligibility is
+`ELIGIBLE` and its ranking metric validates. ZEN Free follows this invariant while the live Pro
+observation and policy inputs are fresh; the UI qualifies its badge as estimated and indicative.
 
 ## Cache and update strategy
 

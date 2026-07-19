@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:revolut:live": "node scripts/revolut-live-probe.mjs",
+    "investigate:zen": "node scripts/zen-endpoint-investigation.mjs",
     "investigate:wise": "node scripts/wise-endpoint-investigation.mjs",
     "test:e2e": "playwright test",
     "format": "prettier --write .",

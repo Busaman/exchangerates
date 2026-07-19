@@ -44,21 +44,30 @@ describe("ZenProviderAdapter", () => {
     expect(result.providerDetails.sourceCurrencyPerTargetUnit).toBe(
       decimalToPlainString(decimal(1).dividedBy("0.002749")),
     );
-    expect(result.effectiveRate).toBe(decimalToPlainString(decimal("0.002749").dividedBy("1.005")));
     expect(result.providerDetails.liveProRate).not.toBe(result.effectiveRate);
     expect(result.targetAmount).toEqual({
-      amount: decimalToPlainString(decimal("1000").times(decimal("0.002749").dividedBy("1.005"))),
+      amount: "2.73",
       currency: "EUR",
     });
+    expect(result.effectiveRate).toBe("0.00273");
+    expect(result.providerDetails.targetAmountCalculation).toBe(
+      "POLICY_DERIVED_TARGET_CURRENCY_ROUND_DOWN",
+    );
     expect(result.planQuotes?.map((plan) => plan.plan)).toEqual([
       "Free",
       "Gold",
       "Platinum",
       "Pro",
     ]);
+    expect(result.planQuotes?.[0]).toMatchObject({
+      plan: "Free",
+      calculationRate: decimalToPlainString(decimal("0.002749").dividedBy("1.005")),
+      effectiveRate: "0.00273",
+    });
     expect(result.planQuotes?.[2]).toMatchObject({
       plan: "Platinum",
-      recipientGets: { amount: "2.749", currency: "EUR" },
+      calculationRate: "0.002749",
+      recipientGets: { amount: "2.74", currency: "EUR" },
     });
     expect(result.planQuotes?.[3]).toMatchObject({
       plan: "Pro",

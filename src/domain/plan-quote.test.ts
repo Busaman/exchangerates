@@ -21,6 +21,7 @@ const numericPlanQuote = {
   fetchedAt: "2026-07-17T10:00:00.000Z",
   rankingEligibility: "DEFAULT_PLAN_ELIGIBLE" as const,
   quoteKind: "derived" as const,
+  calculationRate: "0.002735323383084577114427860696517412935323",
   liveBaseRate: "0.002749",
   effectiveRate: "0.002735323383084577114427860696517412935323",
   inverseRate: "365.5874863586758821389596216806111313205",

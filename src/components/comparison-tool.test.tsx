@@ -36,6 +36,7 @@ describe("provider plan UI", () => {
       ...common,
       plan: "Gold",
       quoteKind: "derived",
+      calculationRate: "0.0027435",
       liveBaseRate: "0.002749",
       effectiveRate: "0.0027435",
       inverseRate: "364.497",

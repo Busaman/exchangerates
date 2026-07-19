@@ -22,14 +22,16 @@ Last updated: 2026-07-17
   identity, strict response and decimal validation.
 - Failure behavior: numeric-field-free unavailable; no mock, market, reciprocal-opposite-direction,
   or competitor fallback. Cache: 60s fresh, 30s negative, 15m stale, single-flight.
-- Derived payouts use exact decimal multiplication from the Pro rate and official markup; only Pro
-  preserves the endpoint-rounded payout. Rate markups are not represented as fabricated monetary
-  fees. Off-market classification uses request time and stale Free observations cannot rank.
+- Derived rates use NeoRate's documented `proRate / (1 + markup)` interpretation; this remains an
+  estimate until a real plan-specific quote validates it. Derived payouts round down to EUR 2/HUF 0,
+  and effective rates are recomputed from those stored payouts. Rate markups are not represented as
+  fabricated monetary fees. The official CET wording is interpreted as fixed UTC+1 year-round.
+  Off-market classification uses request time and stale Free observations cannot rank.
 - Gate: only exact `ZEN_ADAPTER_ENABLED=true` enables retrieval; default is disabled.
-- Current live evidence (2026-07-17): literal minimal request returned HTTP 403 (~106 ms). An
-  identifying NeoRate User-Agent reached HTTP 200 (~168–259 ms) but received the 16-byte error
-  envelope `{"error":"1..."}`. Adding the public page's ordinary AJAX marker did not change it.
-  No cookies, Cloudflare tokens, Referer, session data, or browser automation were used.
+- Current local evidence (2026-07-19): all seven sequential Node variants returned Cloudflare HTTP
+  403 HTML (24–207 ms), including the justified combined request in both directions. A minimal curl
+  control also returned 403 in 117 ms. No cookies, Cloudflare tokens, session data, browser
+  automation, proxy, or fingerprint spoofing were used.
 
 ## Validation state
 
@@ -42,7 +44,8 @@ calculation errors.
 
 ## Plan quote policy
 
-- Global ranking uses ZEN Free and Revolut Standard only.
+- Global ranking uses ZEN Free and Revolut Standard only. A fresh, available, eligible ZEN Free
+  estimate may win, but the badge is explicitly qualified as estimated and indicative.
 - ZEN Free/Gold/Platinum derive from unchanged live Pro rate and official markups.
 - Revolut Standard stays live and untouched. Fee-on-top semantics are proven inside Standard, but
   a common plan-independent base rate is not; every paid plan therefore fails closed numerically.

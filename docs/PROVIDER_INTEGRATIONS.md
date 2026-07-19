@@ -210,12 +210,13 @@ The source does not return a rate timestamp. Use retrieval time as both the obse
 and retrieval timestamp while preserving `rateTimestampBasis =
 RETRIEVAL_TIME_SOURCE_HAS_NO_TIMESTAMP`; never imply it came from ZEN's payload.
 
-Current low-volume evidence from 2026-07-17 does not support enablement. The literal minimal request
-returned HTTP 403 (~106 ms). With an identifying NeoRate User-Agent the endpoint returned HTTP 200
-(~168–259 ms) but only the 16-byte `{"error":"1..."}` envelope; the public page's ordinary
-`X-Requested-With: XMLHttpRequest` marker did not produce quote data. No cookie/token workaround was
-attempted. `ZEN_ADAPTER_ENABLED` is therefore disabled by default; only exact lowercase `true`
-enables a controlled-environment probe. Missing, empty, false or malformed values disable safely.
+Current low-volume evidence does not support enablement. On 2026-07-19, six one-variable Node header
+variants and a combined request returned Cloudflare HTTP 403 with HTML; the combined reverse-direction
+request and a minimal curl control did the same. Accept, Origin, calculator Referer, descriptive
+User-Agent, Accept-Language and the ordinary AJAX marker did not produce quote data. No cookie/token,
+proxy or fingerprint workaround was attempted. `ZEN_ADAPTER_ENABLED` is therefore disabled by
+default; only exact lowercase `true` enables a controlled-environment probe. Missing, empty, false
+or malformed values disable safely. See `ZEN_ENDPOINT_INVESTIGATION.md` for sanitized evidence.
 
 ## Wise comparison endpoint — investigation only
 
@@ -249,14 +250,22 @@ metadata rather than allocating them to one exchange.
 The ZEN public calculator explicitly describes its quote as ZEN Pro. Official pricing retrieved
 2026-07-17 defines Free/Gold/Platinum/Pro markups of 0.50%/0.20%/0%/0%, monthly fees of
 0/0.90/6.90/6.90 EUR, and an off-market +0.40% for all except Pro. Preserve Pro's live
-`data.exchangeRate`; derive target rate as `proRate / (1 + totalMarkup)`. The Friday 21:00–Sunday
-22:00 customer rule is interpreted in `Europe/Warsaw` for DST. Pro is live; all other ZEN plan rows
-are policy-derived. Pro alone uses the endpoint's rounded target amount; derived payouts are the
-exact decimal.js product `sourceAmount × targetRate`. Rate markups carry no fabricated separate
+`data.exchangeRate`; NeoRate currently interprets “ZEN Rate + X%” as
+`calculationRate = proRate / (1 + totalMarkup)`. This is an estimate pending validation against a
+real plan-specific quote; `proRate × (1 - totalMarkup)` remains the documented alternative. The
+official help text literally says Friday 21:00 CET–Sunday 22:00 CET, so the window is fixed UTC+1
+year-round. Pro is live; all other ZEN plan rows are policy-derived. Pro alone uses the endpoint's
+rounded target amount; derived payouts are rounded down with decimal.js to the target scale (EUR 2,
+HUF 0), and effective rate is recomputed from the rounded payout. Rate markups carry no fabricated separate
 monetary fee field. Off-market classification uses the current request timestamp, not a cached
 observation timestamp, and stale Free observations remain visible but ranking-excluded. The ZEN
 cache is exact pair/amount scoped: 60s fresh, 30s negative, 15m stale, and single-flight. Competitor
 alternatives remain untrusted.
+
+`ESTIMATED` quotes are not globally rankable by source type alone. ZEN Free may populate
+`bestProviderId` only while it is the disclosed default plan, `AVAILABLE`, `FRESH`, explicitly
+`ELIGIBLE`, and has a valid positive cost-normalized rate. Its winning badge must say that it is an
+estimated indicative result. Paid, stale, failed, undisclosed or excluded plan quotes cannot win.
 
 For Revolut, fixture reconciliation proves fee-on-top semantics inside Standard. A controlled
 2026-07-17 matrix did not prove a common plan-independent base rate: 350,000 HUF and 400,000 HUF had

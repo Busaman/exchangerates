@@ -1,11 +1,17 @@
-import { decimal, decimalToPlainString } from "@/domain/decimal";
+import {
+  currencyFractionDigits,
+  decimal,
+  decimalToPlainString,
+  roundDownDecimal,
+} from "@/domain/decimal";
 import { planQuoteSchema, type PlanQuote } from "@/domain/plan-quote";
 import type { SupportedCurrencyCode } from "@/domain/quote";
 import { zenQuoteSourceId } from "@/providers/zen/zen-config";
 
 export const zenPricingPolicyUrl = "https://www.zen.com/files/pricing/individual_pricing.pdf";
 export const zenPricingPolicyRetrievedAt = "2026-07-17";
-export const zenOffMarketTimeZone = "Europe/Warsaw";
+// The official wording names CET explicitly, so this is fixed UTC+1 even during European summer.
+export const zenOffMarketTimeZone = "FIXED_CET_UTC_PLUS_1";
 
 export const zenPlanPolicy = [
   { plan: "Free", monthlyFee: "0", baseMarkup: "0.005", isDefaultPlan: true },
@@ -16,29 +22,27 @@ export const zenPlanPolicy = [
 
 export type ZenPlan = (typeof zenPlanPolicy)[number]["plan"];
 
-const warsawClock = new Intl.DateTimeFormat("en-US", {
-  timeZone: zenOffMarketTimeZone,
-  weekday: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
+const fixedCetOffsetMilliseconds = 60 * 60 * 1000;
 
 export function isZenOffMarketWindow(at: Date): boolean {
   if (Number.isNaN(at.getTime())) throw new RangeError("Expected a valid ZEN quote timestamp");
-  const parts = warsawClock.formatToParts(at);
-  const weekday = parts.find((part) => part.type === "weekday")?.value;
-  const hourText = parts.find((part) => part.type === "hour")?.value;
-  const minuteText = parts.find((part) => part.type === "minute")?.value;
-  if (weekday === undefined || hourText === undefined || minuteText === undefined) {
-    throw new Error("Could not classify the ZEN off-market window");
-  }
-  const minutes = Number(hourText) * 60 + Number(minuteText);
+  const fixedCetClock = new Date(at.getTime() + fixedCetOffsetMilliseconds);
+  const weekday = fixedCetClock.getUTCDay();
+  const minutes = fixedCetClock.getUTCHours() * 60 + fixedCetClock.getUTCMinutes();
   return (
-    weekday === "Sat" ||
-    (weekday === "Fri" && minutes >= 21 * 60) ||
-    (weekday === "Sun" && minutes < 22 * 60)
+    weekday === 6 || (weekday === 5 && minutes >= 21 * 60) || (weekday === 0 && minutes < 22 * 60)
   );
+}
+
+export function calculateZenPolicyTargetRate(liveProRate: string, totalMarkup: string): string {
+  const proRate = decimal(liveProRate);
+  const markup = decimal(totalMarkup);
+  if (!proRate.greaterThan(0) || markup.isNegative()) {
+    throw new RangeError(
+      "ZEN policy-rate calculation requires a positive Pro rate and markup >= 0",
+    );
+  }
+  return decimalToPlainString(proRate.dividedBy(decimal(1).plus(markup)));
 }
 
 export function calculateZenPlanQuotes({
@@ -70,12 +74,18 @@ export function calculateZenPlanQuotes({
   return zenPlanPolicy.map((policy) => {
     const offMarketMarkup = offMarket && policy.plan !== "Pro" ? decimal("0.004") : decimal(0);
     const totalMarkup = decimal(policy.baseMarkup).plus(offMarketMarkup);
-    const effectiveRate = proRate.dividedBy(decimal(1).plus(totalMarkup));
-    const inverseRate = decimal(1).dividedBy(effectiveRate);
+    const calculationRate = decimal(
+      calculateZenPolicyTargetRate(liveProRate, totalMarkup.toFixed()),
+    );
     const recipientGets =
       policy.plan === "Pro"
         ? decimalToPlainString(endpointTargetAmount)
-        : decimalToPlainString(source.times(effectiveRate));
+        : roundDownDecimal(source.times(calculationRate), currencyFractionDigits[targetCurrency]);
+    const effectiveRate = decimal(recipientGets).dividedBy(source);
+    if (!effectiveRate.greaterThan(0)) {
+      throw new RangeError("ZEN plan payout must remain positive after target-currency rounding");
+    }
+    const inverseRate = decimal(1).dividedBy(effectiveRate);
     const quoteKind = policy.plan === "Pro" ? "live" : "derived";
 
     return planQuoteSchema.parse({
@@ -90,6 +100,9 @@ export function calculateZenPlanQuotes({
       totalMarkup: decimalToPlainString(totalMarkup),
       pricingWindow: offMarket ? "OFF_MARKET" : "WEEKDAY",
       quoteKind,
+      ...(quoteKind === "derived"
+        ? { calculationRate: decimalToPlainString(calculationRate) }
+        : {}),
       liveBaseRate: decimalToPlainString(proRate),
       effectiveRate: decimalToPlainString(effectiveRate),
       inverseRate: decimalToPlainString(inverseRate),
@@ -98,7 +111,7 @@ export function calculateZenPlanQuotes({
       calculationNote:
         policy.plan === "Pro"
           ? "Élő ZEN Pro quote; az exchangeRate változtatás nélkül megőrizve."
-          : "Élő ZEN Pro alapárfolyamból, a hivatalos csomagfelár alapján számítva. A havi díj nincs beleszámítva ebbe az egyszeri váltásba.",
+          : "Becsült csomagajánlat: NeoRate a ZEN Rate + X% szabályt proRate / (1 + markup) képletként értelmezi, majd a kifizetést a célpénznem skáláján lefelé kerekíti. A havi díj nincs beleszámítva ebbe az egyszeri váltásba.",
       source: {
         sourceType: "LIVE_UNOFFICIAL",
         sourceId: zenQuoteSourceId,

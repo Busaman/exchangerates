@@ -81,7 +81,7 @@ function labelForStatus(result: QuoteResult): string {
   if (result.sourceType === "LIVE_UNOFFICIAL") {
     return `Élő · LIVE_UNOFFICIAL · ${result.freshness}`;
   }
-  if (result.sourceType === "ESTIMATED") return `Számított · ESTIMATED · ${result.freshness}`;
+  if (result.sourceType === "ESTIMATED") return `Becsült · ESTIMATED · ${result.freshness}`;
   return result.sourceType === "MOCK" ? `Mock adat · ${result.freshness}` : result.status;
 }
 
@@ -137,8 +137,13 @@ export function PlanCards({ plans }: { plans: readonly PlanQuote[] }) {
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt>Effektív / inverse ráta</dt>
+                  <dt>
+                    {plan.quoteKind === "derived"
+                      ? "Számítási / effektív / inverse ráta"
+                      : "Effektív / inverse ráta"}
+                  </dt>
                   <dd className="break-all text-right font-mono">
+                    {plan.quoteKind === "derived" ? `${formatRate(plan.calculationRate)} / ` : ""}
                     {formatRate(plan.effectiveRate)} / {formatRate(plan.inverseRate)}
                   </dd>
                 </div>
@@ -715,7 +720,7 @@ export function ComparisonTool() {
         {data?.warnings.includes("ZEN_INDICATIVE") ? (
           <>
             <strong className="text-amber-100">ZEN:</strong> a nyilvános ZEN.COM webes végpont
-            LIVE_UNOFFICIAL Pro alapadata és az abból számított csomagajánlatok láthatók. Az
+            LIVE_UNOFFICIAL Pro alapadata és az abból becsült csomagajánlatok láthatók. Az
             elsődleges ráta közvetlenül a <code>data.exchangeRate</code> mezőből származik; a
             kerekített célösszegből nem számoljuk vissza. A végrehajtható ajánlatot mindig
             ellenőrizd a ZEN.COM appban.{" "}

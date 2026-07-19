@@ -179,13 +179,15 @@ reciprocal rates, HTML parsing, browser automation, or market fallback.
 A successful ZEN result has top-level plan `Free`, source type `ESTIMATED`, exact source URL,
 retrieval timestamp, `providerDetails.type = ZEN_PLANS`, and four provider-independent `planQuotes`.
 The Pro plan preserves the validated `data.exchangeRate` as a `LIVE_UNOFFICIAL` base observation.
-For markup `m`, Free/Gold/Platinum use `targetRate = proRate / (1 + m)` and
-`inverseRate = (1 / proRate) × (1 + m)` with decimal.js. Pro preserves the endpoint's rounded payout;
-each derived plan preserves the exact `sourceAmount × targetRate` decimal result instead of reusing
-that rounded Pro amount. The markup is embedded in the rate, so derived rows do not claim a separate
-zero-valued monetary fee. The public source supplies no rate timestamp, so retrieval time is labeled
-explicitly. Off-market policy is evaluated at request time even for cached observations, and stale
-Free observations cannot win the ranking.
+For markup `m`, Free/Gold/Platinum currently use `calculationRate = proRate / (1 + m)` with
+decimal.js. This is NeoRate's documented interpretation of the official “ZEN Rate + X%” wording,
+not a validated executable plan quote. Derived payouts are rounded down to the target scale (EUR 2,
+HUF 0); their displayed effective rate is recomputed from that rounded payout. The alternative
+`proRate × (1 - m)` remains plausible until a real plan-specific quote validates the convention.
+The markup is embedded in the estimated rate, so derived rows do not claim a separate zero-valued
+monetary fee. The public source supplies no rate timestamp, so retrieval time is labeled explicitly.
+Off-market policy is evaluated at request time even for cached observations, and stale Free
+observations cannot win the ranking.
 
 The server posts only to `https://www.zen.com/landing_currencies.php` using form fields `action`,
 `sourceCurrency`, `targetCurrency`, `amount`, and `endpoint`. It never calls `get_currencies.php` for
@@ -202,8 +204,9 @@ metadata rather than charged to the single exchange. ZEN Free and Revolut Standa
 respective top-level ranking quotes.
 
 ZEN pricing policy retrieved 2026-07-17: Free/Gold/Platinum/Pro monthly fees are
-0/0.90/6.90/6.90 EUR; base markups are 0.50%/0.20%/0%/0%. Friday 21:00 through Sunday 22:00 in
-`Europe/Warsaw`, Free/Gold/Platinum add 0.40% while Pro adds 0%. Revolut Standard proves fee-on-top
+0/0.90/6.90/6.90 EUR; base markups are 0.50%/0.20%/0%/0%. The official help wording says CET, so
+Friday 21:00 through Sunday 22:00 is evaluated at fixed UTC+1 year-round; Free/Gold/Platinum add
+0.40% while Pro adds 0%. Revolut Standard proves fee-on-top
 semantics (`recipient ≈ sender × rate`, `cost = sender + fee`), but same-timestamp rates change by
 amount and the endpoint returns no paid plan. A common plan-independent base rate is not proven, so
 Plus/Premium/Metal/Ultra remain numeric-field-free unavailable in both directions.
@@ -215,6 +218,10 @@ The deterministic mock rounds fees and target amounts with `ROUND_HALF_UP` to th
 (EUR 2, HUF 0), and effective rates to 8 decimal places. The rounded explicit fee is deducted before
 target conversion. This is not a universal provider policy: future real adapters must implement and
 test the provider's documented rounding direction. See `DECISIONS.md` for the authoritative policy.
+
+ZEN policy-derived plan payouts use decimal.js `ROUND_DOWN` at the target currency scale (EUR 2,
+HUF 0). The stored payout, API value and displayed value are identical; `effectiveRate` is calculated
+from that rounded payout rather than retaining arbitrary excess precision.
 
 The Revolut endpoint encodes every monetary request and response value as an integer number of fixed
 hundredths of a major unit, including HUF. NeoRate multiplies user-entered source amounts by 100 for
@@ -296,13 +303,13 @@ NeoRate does not hard-code a threshold; it uses the exact amount-specific respon
 `FULL_ALLOWANCE_ASSUMED` because the endpoint has no account-specific rolling-30-day context, and
 final app verification remains required.
 
-ZEN Pro is wired for EUR/HUF and HUF/EUR but remains disabled by default. A 2026-07-17 cookie-free
-server-side probe found the endpoint reachable but not quote-usable from this environment: the
-literal minimal request returned HTTP 403, while an identifying NeoRate User-Agent returned HTTP 200
-with only `{"error":"1..."}`. The public page's semantic AJAX header did not change the result. No
-cookie, temporary token or browser impersonation workaround is implemented. Controlled staging must
+ZEN Pro is wired for EUR/HUF and HUF/EUR but remains disabled by default and is not operational.
+A 2026-07-19 cookie-free local matrix tested minimal Accept, Origin, Referer, descriptive User-Agent,
+ordinary AJAX and combined headers in Node, plus a minimal curl control. All eight requests returned
+Cloudflare HTTP 403 with HTML; both directions failed and no redirect occurred. No cookie, temporary
+token, proxy or browser-impersonation workaround is implemented. Controlled protected Preview must
 return validated quote objects before enablement; until then an explicit ZEN selection is safely
-unavailable without numeric placeholders.
+unavailable without numeric placeholders. See `docs/ZEN_ENDPOINT_INVESTIGATION.md`.
 
 Wise is not integrated. A 2026-07-16 technical investigation found that Wise's undocumented public
 comparison endpoint was reachable from server-side Node without cookies or a frontend token and

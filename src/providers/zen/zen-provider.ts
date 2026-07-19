@@ -159,7 +159,7 @@ export class ZenProviderAdapter implements ProviderAdapter {
           currency: request.targetCurrency,
           amount: observation.targetAmount,
         },
-        targetAmountCalculation: "ENDPOINT_REPORTED",
+        targetAmountCalculation: "POLICY_DERIVED_TARGET_CURRENCY_ROUND_DOWN",
         feeDisclosure: "ZERO_ADDITIONAL_ZEN_FEE_PUBLIC_PAGE",
         rateTimestampBasis: "RETRIEVAL_TIME_SOURCE_HAS_NO_TIMESTAMP",
         pricingPolicyRetrievedAt: zenPricingPolicyRetrievedAt,

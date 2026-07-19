@@ -272,16 +272,33 @@ metadata. Monthly subscriptions are displayed but never allocated wholly to one 
 
 ZEN's official calculator identifies its public quote as ZEN Pro. Official pricing retrieved
 2026-07-17 gives Free/Gold/Platinum/Pro markups 0.50%/0.20%/0%/0%, monthly fees
-0/0.90/6.90/6.90 EUR, and an additional 0.40% outside market hours for all except Pro. NeoRate
-preserves `data.exchangeRate` as the live target-per-source Pro rate and derives with
-`targetRate = proRate / (1 + totalMarkup)`. Pro alone preserves the endpoint's rounded target
-amount. Every derived plan keeps the exact decimal.js result `sourceAmount × targetRate`; it does
-not inherit the rounded Pro payout and does not fabricate a separate zero-valued monetary fee for a
-rate-embedded markup. The Friday 21:00–Sunday 22:00 European-local rule uses `Europe/Warsaw` for DST
-and is evaluated at quote-request time, including when the live observation came from cache. ZEN
+0/0.90/6.90/6.90 EUR, and an additional 0.40% outside market hours for all except Pro. The official
+help wording retrieved 2026-07-19 is: “Weekend currency exchange fee (from Friday 21:00 CET to Sunday
+22:00 CET).” NeoRate therefore interprets CET literally as fixed UTC+1 year-round; it does not use
+`Europe/Warsaw` and does not shift the boundary for daylight saving time.
+
+NeoRate preserves `data.exchangeRate` as the live target-per-source Pro rate. For derived plans it
+currently interprets “ZEN Rate + X%” as `calculationRate = proRate / (1 + totalMarkup)`. This is a
+NeoRate estimate, not a directly validated Free/Gold/Platinum executable quote. The alternative
+interpretation `proRate × (1 - totalMarkup)` is mathematically plausible: for Pro rate `0.002749` and
+0.5% markup the selected formula yields `0.002735323383...`, the alternative `0.002735255`, a
+difference of about `0.000000068383` (about `0.00684 EUR` on 100,000 HUF). A real same-time
+plan-specific quote must validate the convention before it can be called executable.
+
+Pro alone preserves the endpoint's rounded target amount. Derived payouts use decimal.js
+`ROUND_DOWN` at the target scale (EUR 2, HUF 0), and their effective rate is recomputed from the
+rounded payout. They do not fabricate a separate zero-valued monetary fee for rate-embedded markup.
+The fixed-CET window is evaluated at quote-request time, including when the live observation came
+from cache. ZEN
 now uses pair/amount-specific 60-second fresh, 30-second negative, 15-minute stale and single-flight
 caching; this supersedes ADR-013's no-cache foundation note. Stale details remain transparent but
 the default Free plan is excluded from ranking.
+
+An `ESTIMATED` top-level quote may populate `bestProviderId` only when it is the provider's disclosed
+default-plan quote, `AVAILABLE`, `FRESH`, `rankingStatus = ELIGIBLE`, and has a valid positive
+cost-normalized ranking rate. This permits ZEN Free to win under those conditions, while paid plan
+details never enter global ranking. The UI must identify such a winner as the best available
+estimated indicative result; stale, failed, undisclosed or ranking-excluded estimates cannot win.
 
 Revolut fixtures and the 2026-07-17 live matrix prove fee-on-top semantics inside Standard:
 `recipient ≈ sender × rate` and `totalSourceCost = sender + totalFee`. Standard remains live and is
