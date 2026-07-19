@@ -214,9 +214,11 @@ Current low-volume evidence does not support enablement. On 2026-07-19, six one-
 variants and a combined request returned Cloudflare HTTP 403 with HTML; the combined reverse-direction
 request and a minimal curl control did the same. Accept, Origin, calculator Referer, descriptive
 User-Agent, Accept-Language and the ordinary AJAX marker did not produce quote data. No cookie/token,
-proxy or fingerprint workaround was attempted. `ZEN_ADAPTER_ENABLED` is therefore disabled by
-default; only exact lowercase `true` enables a controlled-environment probe. Missing, empty, false
-or malformed values disable safely. See `ZEN_ENDPOINT_INVESTIGATION.md` for sanitized evidence.
+proxy or fingerprint workaround was attempted. A protected Vercel Preview in `iad1` then reproduced
+the upstream HTTP 403 in both directions through the NeoRate API. Its temporary Preview flag was
+removed; production remained unchanged. `ZEN_ADAPTER_ENABLED` is therefore disabled by default;
+only exact lowercase `true` enables a controlled-environment probe. Missing, empty, false or
+malformed values disable safely. See `ZEN_ENDPOINT_INVESTIGATION.md` for sanitized evidence.
 
 ## Wise comparison endpoint — investigation only
 

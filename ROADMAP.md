@@ -66,6 +66,8 @@ without a fallback. Correctly decoded weekday quotes may rank, while the current
 all weekend Revolut rows visible but out of best-result ranking. Validate that remaining gate against
 converter/app samples during an actual Friday 17:00 ET–Sunday 18:00 ET window before relaxation.**
 
-In parallel, repeat the low-volume ZEN Pro cookie-free transport check in controlled staging. Enable
-`ZEN_ADAPTER_ENABLED=true` there only if the exact form request returns validated `data.exchangeRate`
-and `data.targetAmount`; keep production disabled and do not introduce session/cookie workarounds.
+The 2026-07-19 low-volume ZEN Pro check is complete: local Node/curl and protected Vercel Preview
+both returned Cloudflare HTTP 403 in both directions. The temporary Preview flag was removed and
+production remained disabled. Do not introduce session/cookie workarounds. Before continuing PR #8,
+either identify a legitimate minimal cookie-free source or split reusable generic plan architecture
+from the non-operational ZEN runtime.

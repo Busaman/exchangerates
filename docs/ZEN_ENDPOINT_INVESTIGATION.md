@@ -57,16 +57,29 @@ does not claim whether an ordinary first-party browser session supplies a prereq
 in HTML. No cookie/session test was attempted because such a dependency would be unsuitable for
 NeoRate.
 
-## Preview evidence
+## Protected Preview evidence
 
-Pending the protected Preview smoke test. Production must remain unchanged. If Preview also returns
-403, remove or disable its temporary ZEN feature flag and keep the integration non-operational.
+Deployment `dpl_DkUHYvPtEKZx6TqLowjyLjTpo913` ran the committed branch in Vercel `iad1`. The feature
+gate was temporarily set to exact `true` for Preview only. Two authenticated smoke requests reached
+NeoRate successfully:
+
+| Direction | NeoRate HTTP | Quote result          | Upstream result | Numeric quote |
+| --------- | -----------: | --------------------- | --------------- | ------------- |
+| HUF→EUR   |          200 | `NO_AVAILABLE_QUOTES` | ZEN HTTP 403    | none          |
+| EUR→HUF   |          200 | `NO_AVAILABLE_QUOTES` | ZEN HTTP 403    | none          |
+
+Each response contained the sanitized reason that the public ZEN endpoint blocked the server-side
+request with HTTP 403 and that no fallback was substituted. There was no NeoRate 500. The temporary
+Preview environment variable was removed immediately after the test. Production had no environment
+variables and was never modified or enabled.
 
 ## Decision
 
-The local result is not a fixable static-header mismatch: every individually tested semantic header
-and their reasonable combination failed identically. Until protected Preview evidence says
-otherwise, classify the blocker as an **unresolved anti-bot or environment/IP restriction**. Do not
-add cookies, browser automation, proxies, clearance tokens or header spoofing. The replaceable
-transport and fail-closed adapter may remain reviewable architecture, but it is not a completed ZEN
-product feature.
+The result is not a fixable static-header mismatch: every individually tested semantic header and
+their reasonable combination failed locally, and an independent Vercel server region failed too.
+The exact Cloudflare rule is not observable, so classify the blocker as an **unresolved anti-bot or
+server-environment restriction**, not as a proven first-party-session requirement. Do not add
+cookies, browser automation, proxies, clearance tokens or header spoofing. The replaceable transport
+and fail-closed adapter may remain reviewable architecture, but it is not a completed ZEN product
+feature. Prefer splitting reusable generic plan architecture from the dormant ZEN runtime if the
+generic work is worth merging before a viable source exists.

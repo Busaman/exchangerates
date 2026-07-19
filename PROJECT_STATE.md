@@ -32,6 +32,9 @@ Last updated: 2026-07-17
   403 HTML (24–207 ms), including the justified combined request in both directions. A minimal curl
   control also returned 403 in 117 ms. No cookies, Cloudflare tokens, session data, browser
   automation, proxy, or fingerprint spoofing were used.
+- Protected Preview evidence (2026-07-19): deployment `dpl_DkUHYvPtEKZx6TqLowjyLjTpo913` in Vercel
+  `iad1` returned the same explicit upstream HTTP 403 unavailable result for HUF→EUR and EUR→HUF.
+  The temporary Preview-only flag was removed immediately; production had no ZEN environment flag.
 
 ## Validation state
 
@@ -56,6 +59,7 @@ calculation errors.
 
 ## Next action
 
-Run a controlled low-volume staging probe of the cookie-free ZEN transport. Do not enable ZEN in
-production unless staging returns stable validated quotes and legal/product review approves reliance
-on the undocumented public webpage endpoint.
+Do not merge PR #8 as a completed ZEN feature: local and protected Preview server runtimes both
+receive Cloudflare HTTP 403. Prefer splitting reusable plan architecture/Revolut-safe changes from
+the dormant ZEN runtime if that architecture is independently valuable. Keep ZEN default-off unless
+a future legitimate, minimal, cookie-free source becomes operational and passes legal/product review.

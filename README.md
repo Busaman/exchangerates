@@ -307,9 +307,11 @@ ZEN Pro is wired for EUR/HUF and HUF/EUR but remains disabled by default and is 
 A 2026-07-19 cookie-free local matrix tested minimal Accept, Origin, Referer, descriptive User-Agent,
 ordinary AJAX and combined headers in Node, plus a minimal curl control. All eight requests returned
 Cloudflare HTTP 403 with HTML; both directions failed and no redirect occurred. No cookie, temporary
-token, proxy or browser-impersonation workaround is implemented. Controlled protected Preview must
-return validated quote objects before enablement; until then an explicit ZEN selection is safely
-unavailable without numeric placeholders. See `docs/ZEN_ENDPOINT_INVESTIGATION.md`.
+token, proxy or browser-impersonation workaround is implemented. A protected Vercel Preview in
+`iad1` then returned the same explicit upstream HTTP 403 unavailability for HUF→EUR and EUR→HUF.
+The temporary Preview flag was removed after the test; production was never enabled. An explicit ZEN
+selection remains safely unavailable without numeric placeholders. See
+`docs/ZEN_ENDPOINT_INVESTIGATION.md`.
 
 Wise is not integrated. A 2026-07-16 technical investigation found that Wise's undocumented public
 comparison endpoint was reachable from server-side Node without cookies or a frontend token and
