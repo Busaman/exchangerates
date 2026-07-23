@@ -112,6 +112,7 @@ describe("provider registry", () => {
       { id: "UNAVAILABLE_PROVIDER", name: "Unavailable example", status: "UNAVAILABLE" },
       { id: "REVOLUT", name: "Revolut Personal (HU)", status: "UNAVAILABLE" },
       { id: "ZEN", name: "ZEN.COM", status: "UNAVAILABLE" },
+      { id: "WISE", name: "Wise", status: "UNAVAILABLE" },
     ]);
     expect(providerRegistry.get("MOCK_PROVIDER").adapter).toBeInstanceOf(MockProviderAdapter);
   });
@@ -420,9 +421,10 @@ describe("getQuotes", () => {
       "UNAVAILABLE_PROVIDER",
       "REVOLUT",
       "ZEN",
+      "WISE",
     ]);
     expect(response.quotes).toHaveLength(1);
-    expect(response.issues).toHaveLength(3);
+    expect(response.issues).toHaveLength(4);
     expect(response.sourceStatus).toBe("PARTIAL_SUCCESS");
   });
 

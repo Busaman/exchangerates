@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatExactFeeAmount, formatFeePercentage } from "@/components/comparison-format";
+import {
+  formatComparisonRate,
+  formatExactFeeAmount,
+  formatFeePercentage,
+} from "@/components/comparison-format";
 
 describe("Revolut fee presentation", () => {
   it("preserves a small positive absolute EUR fee", () => {
@@ -16,5 +20,12 @@ describe("Revolut fee presentation", () => {
   it("renders the decoded 965 EUR fixture fee without unit loss", () => {
     expect(formatExactFeeAmount("0.02", "EUR")).toBe("0,02 EUR");
     expect(formatFeePercentage("0.002072538860103626943005181347150259067358")).toBe("0,0021%");
+  });
+
+  it("renders ranking rates compactly without binary floating-point conversion", () => {
+    expect(formatComparisonRate("362.4550643223413932009236028507741671081", "HUF")).toBe(
+      "362.4551",
+    );
+    expect(formatComparisonRate("0.0027297000000000000001", "EUR")).toBe("0.0027297");
   });
 });

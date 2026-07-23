@@ -5,8 +5,8 @@ neobanks, fintech providers and selected banks, using fees returned by the selec
 supported directions are EUR/HUF and HUF/EUR; the domain and adapter boundaries are designed for
 more currencies and providers.
 
-> **Current status:** NeoRate includes disabled-by-default experimental Hungarian personal Revolut
-> and ZEN plan adapters, one deterministic mock and one intentionally unavailable provider. Enable a
+> **Current status:** NeoRate includes disabled-by-default experimental Hungarian personal Revolut,
+> ZEN plan and Wise Personal adapters, one deterministic mock and one intentionally unavailable provider. Enable a
 > real adapter only in controlled staging with its exact feature flag. Validated public-web-source
 > data is `LIVE_UNOFFICIAL`, indicative—not executable—and endpoint or validation failure produces
 > no numeric quote. Always confirm the final rate and fees in the provider app. NeoRate currently
@@ -73,6 +73,12 @@ Select `ZEN` for the Free default plan. The live public calculator supplies the 
 ZEN in the global ranking; Pro remains the unchanged live rate. Competitor `alternatives` are
 ignored. When the exact ZEN gate is off, the request is numeric-field-free unavailable without
 outbound traffic.
+
+Select `WISE` for the Personal / Alapárazás default plan. Wise's public comparison endpoint returns
+the total source debit, a source-currency fee deducted from it, a pre-fee rate and the net recipient
+amount. NeoRate preserves that fee exactly once and ranks by `receivedAmount / amount`; it does not
+add another Hungarian fee. This is an indicative bank-transfer comparison, not an account-specific
+or executable transfer quote.
 
 A successful HTTP response uses status `200`, including partial or fully unavailable provider
 outcomes. It contains request metadata, normalized `quotes`, numeric-field-free `issues`,
@@ -252,6 +258,7 @@ fee does not appear as zero.
 | `REVOLUT_ADAPTER_ENABLED`   | No                             | Only exact lowercase `true` enables Revolut; every other value safely disables it          |
 | `REVOLUT_LIVE_TEST_ENABLED` | No                             | Exactly `true` enables the explicit manual endpoint probe; normal tests never call Revolut |
 | `ZEN_ADAPTER_ENABLED`       | No                             | Only exact lowercase `true` enables ZEN Pro; default and malformed values disable it       |
+| `WISE_ADAPTER_ENABLED`      | No                             | Only exact lowercase `true` enables Wise Personal; every other value safely disables it    |
 
 Never commit `.env` files or credentials. `.env.example` contains documentation-only values.
 
@@ -317,13 +324,14 @@ The only observed response cookie, `__cf_bm`, was not required and is discarded.
 Preview flag was removed after the test; production was never enabled. Source fragility and legal/
 product approval remain outstanding. See `docs/ZEN_ENDPOINT_INVESTIGATION.md`.
 
-Wise is not integrated. A 2026-07-16 technical investigation found that Wise's undocumented public
-comparison endpoint was reachable from server-side Node without cookies or a frontend token and
-returned mathematically consistent HUF/EUR and EUR/HUF comparison quotes for supported amounts.
-The smallest tested amount, 100 HUF, returned no Wise provider despite HTTP 200. The isolated parser
-and opt-in investigation script are not registered in the quote API or UI. See
+Wise Personal is integrated behind a production-default-off gate. The 2026-07-16 technical
+investigation found that Wise's undocumented public comparison endpoint was reachable from
+server-side Node without cookies or a frontend token and returned mathematically consistent
+HUF/EUR and EUR/HUF comparison quotes for supported amounts. The smallest tested amount, 100 HUF,
+returned no Wise provider despite HTTP 200, so the runtime client fails closed in that case. Results
+remain bank-transfer comparison evidence, not account-specific or executable quotes. See
 [`docs/WISE_ENDPOINT_INVESTIGATION.md`](./docs/WISE_ENDPOINT_INVESTIGATION.md) for the
-`PROCEED_WITH_RESTRICTIONS` verdict, evidence, limitations, and legal/product-review gate.
+`PROCEED_WITH_RESTRICTIONS` evidence, limitations, and legal/product-review gate.
 
 ## Project context
 

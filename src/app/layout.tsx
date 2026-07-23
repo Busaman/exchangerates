@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { defaultLanguage } from "@/components/language";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,6 +13,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin", "latin-ext"],
 });
 
+const displayFont = Bricolage_Grotesque({
+  variable: "--font-display",
+  subsets: ["latin", "latin-ext"],
+});
+
+const dataFont = Space_Grotesk({
+  variable: "--font-data",
+  subsets: ["latin", "latin-ext"],
+});
+
 export const metadata: Metadata = {
   title: "NeoRate · Devizaárfolyam-összehasonlítás",
   description:
@@ -20,7 +31,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="hu" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html
+      lang={defaultLanguage}
+      data-theme="light"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} ${displayFont.variable} ${dataFont.variable}`}
+    >
       <body className="min-h-screen antialiased">{children}</body>
     </html>
   );

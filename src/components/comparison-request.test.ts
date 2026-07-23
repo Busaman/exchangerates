@@ -2,20 +2,19 @@ import { describe, expect, it } from "vitest";
 import { createComparisonRequest } from "@/components/comparison-request";
 
 describe("createComparisonRequest", () => {
-  it("sends an explicit Revolut-only HUF to EUR Standard request", () => {
+  it("sends exactly the three operational providers with Revolut Standard context", () => {
     expect(
       createComparisonRequest({
         sourceCurrency: "HUF",
         targetCurrency: "EUR",
         sourceAmount: "100000",
-        providerSelection: "REVOLUT",
         revolutPlan: "STANDARD",
       }),
     ).toEqual({
       sourceCurrency: "HUF",
       targetCurrency: "EUR",
       sourceAmount: "100000",
-      providers: ["REVOLUT"],
+      providers: ["REVOLUT", "ZEN", "WISE"],
       customerPlan: null,
       providerContexts: {
         REVOLUT: { plan: "STANDARD" },
@@ -23,33 +22,18 @@ describe("createComparisonRequest", () => {
     });
   });
 
-  it("omits the provider filter only when all registered providers are selected", () => {
+  it("keeps the selected direction and exact amount in the active-provider request", () => {
     expect(
       createComparisonRequest({
         sourceCurrency: "EUR",
         targetCurrency: "HUF",
         sourceAmount: "1000",
-        providerSelection: "ALL_REGISTERED",
-        revolutPlan: "STANDARD",
       }),
-    ).not.toHaveProperty("providers");
-  });
-
-  it("sends a ZEN-only request without irrelevant Revolut plan context", () => {
-    expect(
-      createComparisonRequest({
-        sourceCurrency: "HUF",
-        targetCurrency: "EUR",
-        sourceAmount: "1000",
-        providerSelection: "ZEN",
-        revolutPlan: "STANDARD",
-      }),
-    ).toEqual({
-      sourceCurrency: "HUF",
-      targetCurrency: "EUR",
+    ).toMatchObject({
+      sourceCurrency: "EUR",
+      targetCurrency: "HUF",
       sourceAmount: "1000",
-      providers: ["ZEN"],
-      customerPlan: null,
+      providers: ["REVOLUT", "ZEN", "WISE"],
     });
   });
 });

@@ -27,3 +27,13 @@ export function formatFeePercentage(value: string): string {
 
   return `${percentage.toFixed(fractionDigits).replace(".", ",")}%`;
 }
+
+export function formatComparisonRate(rate: string, targetCurrency: string): string {
+  const supportedCurrency = supportedCurrencyCodeSchema.parse(targetCurrency);
+  const maximumFractionDigits = supportedCurrency === "HUF" ? 4 : 8;
+  const rounded = decimal(rate)
+    .toDecimalPlaces(maximumFractionDigits)
+    .toFixed(maximumFractionDigits);
+
+  return rounded.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}

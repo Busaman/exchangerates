@@ -8,6 +8,7 @@ export const providerIdentifierSchema = z.enum([
   "UNAVAILABLE_PROVIDER",
   "REVOLUT",
   "ZEN",
+  "WISE",
 ]);
 export const supportedCurrencyCodeSchema = z.enum(["EUR", "HUF"]);
 export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/);
@@ -114,6 +115,21 @@ const zenProviderDetailsSchema = z
   })
   .strict();
 
+const wiseProviderDetailsSchema = z
+  .object({
+    type: z.literal("WISE_PERSONAL"),
+    plan: z.literal("Personal / Alapárazás"),
+    displayedBaseRate: positiveDecimalStringSchema,
+    endpointFee: monetaryAmountSchema,
+    totalSourceCost: positiveMonetaryAmountSchema,
+    markup: decimalStringSchema,
+    isConsideredMidMarketRate: z.boolean(),
+    fundingContext: z.literal("BANK_TRANSFER_COMPARISON"),
+    quoteScope: z.literal("PUBLIC_COMPARISON_NOT_ACCOUNT_SPECIFIC"),
+    indicativeWarning: z.string().min(1),
+  })
+  .strict();
+
 export const quoteRequestSchema = z
   .object({
     sourceCurrency: supportedCurrencyCodeSchema,
@@ -154,7 +170,11 @@ export const availableQuoteSchema = z
     disclaimer: z.string().min(1).optional(),
     planQuotes: z.array(planQuoteSchema).min(1).optional(),
     providerDetails: z
-      .discriminatedUnion("type", [revolutProviderDetailsSchema, zenProviderDetailsSchema])
+      .discriminatedUnion("type", [
+        revolutProviderDetailsSchema,
+        zenProviderDetailsSchema,
+        wiseProviderDetailsSchema,
+      ])
       .optional(),
   })
   .superRefine((quote, context) => {
@@ -244,14 +264,30 @@ export const availableQuoteSchema = z
     const revolutDetails =
       quote.providerDetails?.type === "REVOLUT_PERSONAL" ? quote.providerDetails : undefined;
     const totalSourceCost = revolutDetails?.totalSourceCost;
-    if (totalSourceCost !== undefined) {
+    const wiseDetails =
+      quote.providerDetails?.type === "WISE_PERSONAL" ? quote.providerDetails : undefined;
+    const rankingSourceCost = totalSourceCost ?? wiseDetails?.totalSourceCost;
+    if (rankingSourceCost !== undefined) {
       const sourceCurrency = quote.sourceAmount.currency;
-      for (const [path, currency] of [
-        [["providerDetails", "fxFee", "currency"], revolutDetails?.fxFee.currency],
-        [["providerDetails", "totalFee", "currency"], revolutDetails?.totalFee.currency],
-        [["providerDetails", "feeCurrency"], revolutDetails?.feeCurrency],
-        [["providerDetails", "totalSourceCost", "currency"], totalSourceCost.currency],
-      ] as const) {
+      const providerCosts =
+        revolutDetails === undefined
+          ? ([
+              [["providerDetails", "endpointFee", "currency"], wiseDetails?.endpointFee.currency],
+              [
+                ["providerDetails", "totalSourceCost", "currency"],
+                wiseDetails?.totalSourceCost.currency,
+              ],
+            ] as const)
+          : ([
+              [["providerDetails", "fxFee", "currency"], revolutDetails.fxFee.currency],
+              [["providerDetails", "totalFee", "currency"], revolutDetails.totalFee.currency],
+              [["providerDetails", "feeCurrency"], revolutDetails.feeCurrency],
+              [
+                ["providerDetails", "totalSourceCost", "currency"],
+                revolutDetails.totalSourceCost.currency,
+              ],
+            ] as const);
+      for (const [path, currency] of providerCosts) {
         if (currency !== sourceCurrency) {
           context.addIssue({
             code: "custom",
@@ -261,8 +297,8 @@ export const availableQuoteSchema = z
         }
       }
       if (
-        !decimalPattern.test(totalSourceCost.amount) ||
-        !decimal(totalSourceCost.amount).greaterThan(0)
+        !decimalPattern.test(rankingSourceCost.amount) ||
+        !decimal(rankingSourceCost.amount).greaterThan(0)
       ) {
         context.addIssue({
           code: "custom",
@@ -276,7 +312,7 @@ export const availableQuoteSchema = z
       const expected = calculateRankingEffectiveRate({
         sourceAmount: quote.sourceAmount,
         targetAmount: quote.targetAmount,
-        ...(totalSourceCost === undefined ? {} : { totalSourceCost }),
+        ...(rankingSourceCost === undefined ? {} : { totalSourceCost: rankingSourceCost }),
       });
       if (!decimal(quote.rankingEffectiveRate).equals(expected)) {
         context.addIssue({

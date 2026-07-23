@@ -1,9 +1,14 @@
 import { providerIdentifierSchema, type ProviderIdentifier } from "@/domain/quote";
-import { resolveRevolutAdapterEnabled, resolveZenAdapterEnabled } from "@/lib/env";
+import {
+  resolveRevolutAdapterEnabled,
+  resolveWiseAdapterEnabled,
+  resolveZenAdapterEnabled,
+} from "@/lib/env";
 import { MockProviderAdapter } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
 import { UnavailableProviderAdapter } from "@/providers/unavailable-provider";
+import { WiseProviderAdapter } from "@/providers/wise/wise-provider";
 import { ZenProviderAdapter } from "@/providers/zen/zen-provider";
 
 export type ProviderRegistrationStatus = "SUPPORTED" | "UNAVAILABLE";
@@ -60,12 +65,15 @@ export class ProviderAdapterRegistry {
 export function createProviderRegistry({
   revolutEnabled,
   zenEnabled = false,
+  wiseEnabled = false,
 }: {
   revolutEnabled: boolean;
   zenEnabled?: boolean;
+  wiseEnabled?: boolean;
 }): ProviderAdapterRegistry {
   const revolutAdapter = new RevolutProviderAdapter();
   const zenAdapter = new ZenProviderAdapter();
+  const wiseAdapter = new WiseProviderAdapter();
 
   return new ProviderAdapterRegistry([
     { adapter: new MockProviderAdapter(), status: "SUPPORTED" },
@@ -93,10 +101,20 @@ export function createProviderRegistry({
             "The experimental ZEN Pro public-page integration is disabled pending legal, product and longer staging verification.",
           sourceId: "zen-public-landing-currency-converter-disabled",
         },
+    wiseEnabled
+      ? { adapter: wiseAdapter, status: "SUPPORTED", timeoutMs: 6_000 }
+      : {
+          adapter: wiseAdapter,
+          status: "UNAVAILABLE",
+          reason:
+            "The experimental Wise public-comparison integration is disabled pending protected-Preview and legal/product verification.",
+          sourceId: "wise-public-comparison-disabled",
+        },
   ]);
 }
 
 export const providerRegistry = createProviderRegistry({
   revolutEnabled: resolveRevolutAdapterEnabled(process.env.REVOLUT_ADAPTER_ENABLED),
   zenEnabled: resolveZenAdapterEnabled(process.env.ZEN_ADAPTER_ENABLED),
+  wiseEnabled: resolveWiseAdapterEnabled(process.env.WISE_ADAPTER_ENABLED),
 });
