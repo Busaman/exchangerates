@@ -2,13 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { ComparisonTool } from "@/components/comparison-tool";
+import {
+  applyLanguageSelection,
+  defaultLanguage,
+  synchronizeDocumentLanguage,
+  type Language,
+} from "@/components/language";
 
-export type Language = "hu" | "en";
+export type { Language } from "@/components/language";
 type Theme = "light" | "dark";
 
 export function FintechShell() {
-  const [language, setLanguage] = useState<Language>("hu");
+  const [language, setLanguage] = useState<Language>(defaultLanguage);
   const [theme, setTheme] = useState<Theme>("light");
+
+  useEffect(() => {
+    synchronizeDocumentLanguage(language, document.documentElement);
+  }, [language]);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("neorate-theme");
@@ -53,7 +63,9 @@ export function FintechShell() {
                   key={item}
                   type="button"
                   aria-pressed={language === item}
-                  onClick={() => setLanguage(item)}
+                  onClick={() =>
+                    applyLanguageSelection(item, document.documentElement, setLanguage)
+                  }
                 >
                   {item.toUpperCase()}
                 </button>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { defaultLanguage } from "@/components/language";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
-      lang="hu"
+      lang={defaultLanguage}
       data-theme="light"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${displayFont.variable} ${dataFont.variable}`}

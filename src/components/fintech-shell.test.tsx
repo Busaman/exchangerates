@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { FintechShell } from "@/components/fintech-shell";
 import { ComingSoonSection } from "@/components/coming-soon-section";
 import { activeComparisonProviderIds } from "@/components/comparison-request";
+import { applyLanguageSelection, defaultLanguage } from "@/components/language";
 import { providerIdentifierSchema } from "@/domain/quote";
 
 describe("Fintech v2 shell", () => {
@@ -13,6 +14,18 @@ describe("Fintech v2 shell", () => {
     expect(html).toContain('aria-label="Sötét téma"');
     expect(html).toContain('aria-label="Csomagok megjelenítése"');
     expect(html).toContain("Ne hagyd a pénzed");
+  });
+
+  it("keeps the initial language and document language synchronized through toggles", () => {
+    const documentElement = { lang: defaultLanguage };
+    const selectedLanguages: string[] = [];
+
+    expect(defaultLanguage).toBe("hu");
+    applyLanguageSelection("en", documentElement, (language) => selectedLanguages.push(language));
+    expect(documentElement.lang).toBe("en");
+    applyLanguageSelection("hu", documentElement, (language) => selectedLanguages.push(language));
+    expect(documentElement.lang).toBe("hu");
+    expect(selectedLanguages).toEqual(["en", "hu"]);
   });
 
   it("keeps exactly Revolut, ZEN and Wise in the operational comparison request", () => {
