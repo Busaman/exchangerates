@@ -72,6 +72,7 @@ export const quoteWarningSchema = z.enum([
   "MOCK_DATA",
   "REVOLUT_INDICATIVE",
   "REVOLUT_FEE_INCOMPLETE",
+  "ZEN_INDICATIVE",
 ]);
 
 export const quoteApiResponseSchema = z

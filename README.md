@@ -5,12 +5,12 @@ neobanks, fintech providers and selected banks, using fees returned by the selec
 supported directions are EUR/HUF and HUF/EUR; the domain and adapter boundaries are designed for
 more currencies and providers.
 
-> **Current status:** NeoRate includes a disabled-by-default experimental Hungarian personal
-> Revolut adapter, one deterministic mock and one intentionally unavailable provider. Revolut must
-> be explicitly enabled with `REVOLUT_ADAPTER_ENABLED=true` only in a controlled staging
-> environment. Validated data from Revolut's public website JSON endpoint is `LIVE_UNOFFICIAL`,
-> indicative—not executable—and endpoint or validation failure produces no numeric quote. Always confirm the
-> final rate and fees in the Revolut app. NeoRate currently covers personal-provider pricing only.
+> **Current status:** NeoRate includes disabled-by-default experimental Hungarian personal Revolut
+> and ZEN plan adapters, one deterministic mock and one intentionally unavailable provider. Enable a
+> real adapter only in controlled staging with its exact feature flag. Validated public-web-source
+> data is `LIVE_UNOFFICIAL`, indicative—not executable—and endpoint or validation failure produces
+> no numeric quote. Always confirm the final rate and fees in the provider app. NeoRate currently
+> covers personal-provider pricing only.
 
 ## Selected stack
 
@@ -61,14 +61,18 @@ characters, values below the source-currency minimum (0.01 EUR or 100 HUF), and 
 }
 ```
 
-Select `REVOLUT` to request Hungarian personal pricing. `plan` must be one of `STANDARD`, `PLUS`,
-`PREMIUM`, `METAL`, or `ULTRA`; Business and Pro are rejected. The public endpoint returns plan fee
-objects but has no account identity or prior-usage input, so it cannot know the customer's actual
-rolling 30-day allowance usage. NeoRate does not ask for or invent that value and does not add a
-second manually calculated fee: the selected endpoint plan fee is normalized once, with a visible
-`FULL_ALLOWANCE_ASSUMED` limitation. Omitting the whole Revolut context yields a numeric-field-free
-unavailable result; malformed context is a `400` validation error. When the experimental adapter
-gate is off, an explicit Revolut request returns an unavailable result without making an HTTP request.
+Select `REVOLUT` to request Hungarian personal pricing. The top-level and global-ranking quote is
+always the live `STANDARD` endpoint result; its fee and recipient are preserved exactly once.
+Provider-detail `planQuotes` expose paid-plan estimates only where a common base rate is proven. It
+is not proven by current evidence, so Plus/Premium/Metal/Ultra are numeric-field-free unavailable;
+they never receive a global rank. Their monthly fee and official policy metadata remain visible but
+are not allocated to one exchange.
+
+Select `ZEN` for the Free default plan. The live public calculator supplies the ZEN Pro base rate in
+`data.exchangeRate`; official markup policy derives Free, Gold and Platinum. Free alone represents
+ZEN in the global ranking; Pro remains the unchanged live rate. Competitor `alternatives` are
+ignored. When the exact ZEN gate is off, the request is numeric-field-free unavailable without
+outbound traffic.
 
 A successful HTTP response uses status `200`, including partial or fully unavailable provider
 outcomes. It contains request metadata, normalized `quotes`, numeric-field-free `issues`,
@@ -170,6 +174,48 @@ and an identifying User-Agent only—no `localeCode` query parameter, cookies, a
 browser identifiers, Sentry/Cloudflare/analytics headers, Business APIs, private app endpoints,
 reciprocal rates, HTML parsing, browser automation, or market fallback.
 
+### ZEN plan quote fields
+
+A successful ZEN result has top-level plan `Free`, source type `ESTIMATED`, exact source URL,
+retrieval timestamp, `providerDetails.type = ZEN_PLANS`, and four provider-independent `planQuotes`.
+The Pro plan preserves the validated `data.exchangeRate` as a `LIVE_UNOFFICIAL` base observation.
+For markup `m`, Free/Gold/Platinum currently use `calculationRate = proRate / (1 + m)` with
+decimal.js. This is NeoRate's documented interpretation of the official “ZEN Rate + X%” wording,
+not a validated executable plan quote. Derived payouts are rounded down to the target scale (EUR 2,
+HUF 0); their displayed effective rate is recomputed from that rounded payout. The alternative
+`proRate × (1 - m)` remains plausible until a real plan-specific quote validates the convention.
+The markup is embedded in the estimated rate, so derived rows do not claim a separate zero-valued
+monetary fee. The public source supplies no rate timestamp, so retrieval time is labeled explicitly.
+Off-market policy is evaluated at request time even for cached observations, and stale Free
+observations cannot win the ranking.
+
+The server posts only to `https://www.zen.com/landing_currencies.php` using form fields `action`,
+`sourceCurrency`, `targetCurrency`, `amount`, and `endpoint`. It never calls `get_currencies.php` for
+quotes. Its native Node HTTPS transport sends form Content-Type, byte-accurate Content-Length, the
+required official calculator-page Referer and an
+identifying NeoRate User-Agent. Header isolation proved that Origin, Accept, Accept-Language and the
+AJAX marker are unnecessary and they are not sent. The quote route is explicitly Node-runtime-only
+because the transport uses `node:https`. The client sends no cookies, authorization, Cloudflare
+tokens, browser identifiers or session data and discards response cookies. It has strict timeout,
+size, null-body-status, content-type, schema and rate checks, with no mock, market, competitor or
+reciprocal-direction fallback.
+
+### Plan display and ranking
+
+The UI defaults to **Ingyenes csomagok** and retains that choice for the browser session. ZEN and
+Revolut expose accessible plan expansion; **Minden csomag** shows all known plans without changing
+provider order. Paid plans have no global rank, and their monthly subscription is displayed as
+metadata rather than charged to the single exchange. ZEN Free and Revolut Standard are the only
+respective top-level ranking quotes.
+
+ZEN pricing policy retrieved 2026-07-17: Free/Gold/Platinum/Pro monthly fees are
+0/0.90/6.90/6.90 EUR; base markups are 0.50%/0.20%/0%/0%. The official help wording says CET, so
+Friday 21:00 through Sunday 22:00 is evaluated at fixed UTC+1 year-round; Free/Gold/Platinum add
+0.40% while Pro adds 0%. Revolut Standard proves fee-on-top
+semantics (`recipient ≈ sender × rate`, `cost = sender + fee`), but same-timestamp rates change by
+amount and the endpoint returns no paid plan. A common plan-independent base rate is not proven, so
+Plus/Premium/Metal/Ultra remain numeric-field-free unavailable in both directions.
+
 ## Decimal and rounding rules
 
 All calculations use decimal.js—never JavaScript `number`. Input is preserved as a decimal string.
@@ -177,6 +223,10 @@ The deterministic mock rounds fees and target amounts with `ROUND_HALF_UP` to th
 (EUR 2, HUF 0), and effective rates to 8 decimal places. The rounded explicit fee is deducted before
 target conversion. This is not a universal provider policy: future real adapters must implement and
 test the provider's documented rounding direction. See `DECISIONS.md` for the authoritative policy.
+
+ZEN policy-derived plan payouts use decimal.js `ROUND_DOWN` at the target currency scale (EUR 2,
+HUF 0). The stored payout, API value and displayed value are identical; `effectiveRate` is calculated
+from that rounded payout rather than retaining arbitrary excess precision.
 
 The Revolut endpoint encodes every monetary request and response value as an integer number of fixed
 hundredths of a major unit, including HUF. NeoRate multiplies user-entered source amounts by 100 for
@@ -201,6 +251,7 @@ fee does not appear as zero.
 | `LOG_LEVEL`                 | No                             | `debug`, `info`, `warn`, or `error`; defaults to `info`                                    |
 | `REVOLUT_ADAPTER_ENABLED`   | No                             | Only exact lowercase `true` enables Revolut; every other value safely disables it          |
 | `REVOLUT_LIVE_TEST_ENABLED` | No                             | Exactly `true` enables the explicit manual endpoint probe; normal tests never call Revolut |
+| `ZEN_ADAPTER_ENABLED`       | No                             | Only exact lowercase `true` enables ZEN Pro; default and malformed values disable it       |
 
 Never commit `.env` files or credentials. `.env.example` contains documentation-only values.
 
@@ -216,6 +267,7 @@ pnpm test             # unit tests once
 pnpm test:watch       # unit tests in watch mode
 pnpm test:coverage    # unit test coverage
 pnpm test:revolut:live # explicit live endpoint probe (requires its environment flag)
+pnpm investigate:zen # opt-in, low-volume ZEN transport investigation; never runs in CI
 pnpm investigate:wise # opt-in technical Wise endpoint investigation; never runs in CI
 pnpm test:e2e         # future Playwright suite
 pnpm format           # write formatting
@@ -256,6 +308,14 @@ Correctly scaled live requests return the dynamic Standard fee shown by the publ
 NeoRate does not hard-code a threshold; it uses the exact amount-specific response. The quote remains
 `FULL_ALLOWANCE_ASSUMED` because the endpoint has no account-specific rolling-30-day context, and
 final app verification remains required.
+
+ZEN Pro is wired for EUR/HUF and HUF/EUR and remains disabled by default. A 2026-07-19 follow-up
+showed that Undici `fetch` was Cloudflare-blocked while cookie-free curl and Node native HTTPS from
+the same host returned valid JSON. No preliminary page GET, session cookie, nonce or CSRF token was
+required. A five-request local matrix and two-direction protected Vercel Preview smoke test passed.
+The only observed response cookie, `__cf_bm`, was not required and is discarded. The temporary
+Preview flag was removed after the test; production was never enabled. Source fragility and legal/
+product approval remain outstanding. See `docs/ZEN_ENDPOINT_INVESTIGATION.md`.
 
 Wise is not integrated. A 2026-07-16 technical investigation found that Wise's undocumented public
 comparison endpoint was reachable from server-side Node without cookies or a frontend token and

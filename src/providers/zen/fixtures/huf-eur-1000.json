@@ -1,0 +1,26 @@
+{
+  "_sanitized": true,
+  "_evidence": "User-supplied verified public endpoint example; no cookies, tokens or identifiers retained.",
+  "data": {
+    "sourceAmount": "1000.00",
+    "targetAmount": "2.74",
+    "exchangeRate": "0.002749",
+    "alternatives": [
+      {
+        "provider": "Revolut",
+        "exchangeRate": "0.002746",
+        "amount": "2.74"
+      },
+      {
+        "provider": "Wise",
+        "exchangeRate": "0.002745",
+        "amount": "2.74"
+      },
+      {
+        "provider": "ZEN",
+        "exchangeRate": "0.002749",
+        "amount": "2.74"
+      }
+    ]
+  }
+}

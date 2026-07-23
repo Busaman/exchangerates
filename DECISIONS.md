@@ -227,3 +227,100 @@ separate adapter PR receives legal/product approval, operational review, staging
 explicit `LIVE_UNOFFICIAL`/indicative labeling. A future adapter should begin with a conservative
 60-second amount/pair/country-aware cache. The comparison endpoint is not assumed to be an
 account-specific or payment-method-specific executable quote.
+
+## ADR-013 — ZEN Pro public webpage quote adapter
+
+**Status:** Accepted behind a disabled operational gate (2026-07-17)
+
+Use only `POST https://www.zen.com/landing_currencies.php` for indicative ZEN Pro EUR/HUF and
+HUF/EUR quotes. The request is source-driven form data with `action=change_currency`, allowlisted
+source/target currencies, an exact two-decimal source amount, and `endpoint=change_currency`.
+Successful data is `LIVE_UNOFFICIAL`: the endpoint belongs to the official ZEN.COM public converter
+but is not documented as a supported external API. The official public converter states that the
+displayed rate and zero-additional-fee offer apply to ZEN Pro and that the margin is included in the
+rate. NeoRate preserves `data.exchangeRate` as the primary directional rate and the endpoint's
+rounded `data.targetAmount` as the displayed payout. It never reconstructs the primary rate from
+that rounded payout. For HUF→EUR, `1 / data.exchangeRate` is exposed separately as the HUF cost of
+one EUR; the independently retrieved opposite direction is never replaced with this reciprocal.
+
+The adapter uses a replaceable server-side transport, a 2.5-second source timeout, manual redirects,
+a 64 KiB response limit, strict JSON/Zod validation, and decimal.js plausibility and amount/rate
+consistency checks. The default transport is Node's native HTTPS client and sends only the ordinary
+form Content-Type, byte-accurate Content-Length, official calculator-page Referer and an identifying
+NeoRate User-Agent. A controlled one-variable-at-a-time matrix proved that Origin, Accept,
+Accept-Language and `X-Requested-With` are unnecessary. It sends no cookies, authorization,
+Cloudflare clearance data, browser identifiers or browser automation, and discards every response
+cookie. The `alternatives` collection is intentionally untrusted and ignored; its
+Revolut/Wise rows can never create or modify NeoRate Revolut/Wise provider observations. The endpoint
+does not supply a rate timestamp, so a successful quote explicitly uses retrieval time as its rate
+observation timestamp.
+
+The 2026-07-19 follow-up established the transport boundary precisely. Undici `fetch` received a
+Cloudflare 403 for both the initial public-page GET and quote POST. From the same Windows host, curl
+and Node's native `https.request` returned HTTP 200 JSON without a preliminary GET, cookie, CSRF
+token or nonce. A protected Vercel Preview in `iad1` then returned valid quotes in both directions
+through the native transport. The endpoint issued a `__cf_bm` response cookie, but the first request
+had already succeeded without it; NeoRate classifies and discards it. Therefore no anonymous session
+flow is implemented. `ZEN_ADAPTER_ENABLED` remains false by default and only exact lowercase `true`
+enables network retrieval in a controlled environment. Missing, empty, false, or malformed values
+safely disable ZEN. Disabled, 403, timeout, malformed JSON, invalid schema/rate, or inconsistent
+amount behavior is numeric-field-free unavailable; no reference, mock, reciprocal-opposite-direction,
+or competitor fallback is substituted. Amount/pair-specific fresh, negative, stale and single-flight
+caches remain separate from transport state.
+
+Because the selected transport imports `node:https`, the versioned quote route is pinned to the
+Next.js Node runtime; Edge is unsupported. HTTP 204, 205 and 304 are classified as upstream protocol
+errors before constructing a body-bearing `Response`. Empty HTTP 200 JSON is `INVALID_JSON`. These
+failures enter the existing negative/stale behavior, release single-flight state, and never expose
+numeric placeholders.
+
+## ADR-014 — Provider-independent plan quotes and default-plan ranking
+
+**Status:** Accepted (2026-07-17)
+
+Rank one default plan per provider: ZEN Free and Revolut Standard. Paid plans are provider details
+only and cannot win the global ranking. A discriminated `planQuotes` union represents live, derived
+and numeric-field-free unavailable plans with subscription, allowance/markup, provenance and ranking
+metadata. Monthly subscriptions are displayed but never allocated wholly to one exchange.
+
+ZEN's official calculator identifies its public quote as ZEN Pro. Official pricing retrieved
+2026-07-17 gives Free/Gold/Platinum/Pro markups 0.50%/0.20%/0%/0%, monthly fees
+0/0.90/6.90/6.90 EUR, and an additional 0.40% outside market hours for all except Pro. The official
+help wording retrieved 2026-07-19 is: “Weekend currency exchange fee (from Friday 21:00 CET to Sunday
+22:00 CET).” NeoRate therefore interprets CET literally as fixed UTC+1 year-round; it does not use
+`Europe/Warsaw` and does not shift the boundary for daylight saving time.
+
+NeoRate preserves `data.exchangeRate` as the live target-per-source Pro rate. For derived plans it
+currently interprets “ZEN Rate + X%” as `calculationRate = proRate / (1 + totalMarkup)`. This is a
+NeoRate estimate, not a directly validated Free/Gold/Platinum executable quote. The alternative
+interpretation `proRate × (1 - totalMarkup)` is mathematically plausible: for Pro rate `0.002749` and
+0.5% markup the selected formula yields `0.002735323383...`, the alternative `0.002735255`, a
+difference of about `0.000000068383` (about `0.00684 EUR` on 100,000 HUF). A real same-time
+plan-specific quote must validate the convention before it can be called executable.
+
+Pro alone preserves the endpoint's rounded target amount. Derived payouts use decimal.js
+`ROUND_DOWN` at the target scale (EUR 2, HUF 0), and their effective rate is recomputed from the
+rounded payout. They do not fabricate a separate zero-valued monetary fee for rate-embedded markup.
+The fixed-CET window is evaluated at quote-request time, including when the live observation came
+from cache. ZEN
+now uses pair/amount-specific 60-second fresh, 30-second negative, 15-minute stale and single-flight
+caching; this supersedes ADR-013's no-cache foundation note. Stale details remain transparent but
+the default Free plan is excluded from ranking.
+
+An `ESTIMATED` top-level quote may populate `bestProviderId` only when it is the provider's disclosed
+default-plan quote, `AVAILABLE`, `FRESH`, `rankingStatus = ELIGIBLE`, and has a valid positive
+cost-normalized ranking rate. This permits ZEN Free to win under those conditions, while paid plan
+details never enter global ranking. The UI must identify such a winner as the best available
+estimated indicative result; stale, failed, undisclosed or ranking-excluded estimates cannot win.
+
+Revolut fixtures and the 2026-07-17 live matrix prove fee-on-top semantics inside Standard:
+`recipient ≈ sender × rate` and `totalSourceCost = sender + totalFee`. Standard remains live and is
+never charged twice. They do not prove a common plan-independent base: at the same source timestamp,
+350,000 HUF and 400,000 HUF returned different rates, and all live responses exposed only Standard.
+Plus/Premium/Metal/Ultra are therefore numeric-field-free unavailable in both directions. Official
+subscription and allowance metadata remains visible, but no payout is invented. Until issue #5 is
+resolved, Standard also remains ranking-excluded on weekends. The temporary Hungarian 0.45%
+provision is not manually added.
+
+Both sources remain undocumented `LIVE_UNOFFICIAL` observations, production-default-off, indicative,
+and subject to staging plus legal/product review.

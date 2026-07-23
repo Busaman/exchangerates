@@ -34,4 +34,22 @@ describe("createComparisonRequest", () => {
       }),
     ).not.toHaveProperty("providers");
   });
+
+  it("sends a ZEN-only request without irrelevant Revolut plan context", () => {
+    expect(
+      createComparisonRequest({
+        sourceCurrency: "HUF",
+        targetCurrency: "EUR",
+        sourceAmount: "1000",
+        providerSelection: "ZEN",
+        revolutPlan: "STANDARD",
+      }),
+    ).toEqual({
+      sourceCurrency: "HUF",
+      targetCurrency: "EUR",
+      sourceAmount: "1000",
+      providers: ["ZEN"],
+      customerPlan: null,
+    });
+  });
 });

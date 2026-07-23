@@ -7,8 +7,11 @@ if (!enabled) {
 
 const endpoint = "https://www.revolut.com/api/exchange/quote";
 const probes = [
-  { majorAmount: "1000", fromCurrency: "HUF", toCurrency: "EUR" },
-  { majorAmount: "100000", fromCurrency: "HUF", toCurrency: "EUR" },
+  ...["100000", "350000", "400000", "1050000", "1100000"].map((majorAmount) => ({
+    majorAmount,
+    fromCurrency: "HUF",
+    toCurrency: "EUR",
+  })),
   ...["968", "969", "970", "971", "972", "973", "974"].map((majorAmount) => ({
     majorAmount,
     fromCurrency: "EUR",

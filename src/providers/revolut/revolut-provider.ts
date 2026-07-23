@@ -20,6 +20,7 @@ import {
   type RevolutQuoteClient,
 } from "@/providers/revolut/revolut-quote-client";
 import { evaluateRevolutFeeCoverage } from "@/providers/revolut/revolut-fee-coverage";
+import { calculateRevolutPlanQuotes } from "@/providers/revolut/revolut-plan-policy";
 
 export const revolutProvider: Provider = { id: "REVOLUT", name: "Revolut Personal (HU)" };
 export const revolutIndicativeWarning =
@@ -40,7 +41,6 @@ export class RevolutProviderAdapter implements ProviderAdapter {
   async getQuote(requestInput: QuoteRequest, context?: ProviderAdapterContext) {
     const request = quoteRequestSchema.parse(requestInput);
     const pair = revolutPairKey(request.sourceCurrency, request.targetCurrency);
-    const personalContext = request.providerContexts?.REVOLUT;
     let sourceUrl: string | undefined;
     if (pair !== undefined) {
       try {
@@ -58,21 +58,10 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         sourceId: "revolut-personal-unsupported-pair",
       });
     }
-    if (personalContext === undefined) {
-      return createProviderUnavailableResult({
-        provider: this.provider,
-        request,
-        reason:
-          "Revolut Personal requires an explicit personal plan to select the endpoint fee quote.",
-        sourceId: "revolut-public-json-quote",
-        sourceUrl,
-      });
-    }
-
     let observation;
     try {
       observation = await this.#quoteClient.getQuote(
-        { pair, sourceAmount: request.sourceAmount, plan: personalContext.plan },
+        { pair, sourceAmount: request.sourceAmount, plan: "STANDARD" },
         context?.signal,
       );
     } catch (error) {
@@ -80,7 +69,7 @@ export class RevolutProviderAdapter implements ProviderAdapter {
         return createProviderUnavailableResult({
           provider: this.provider,
           request,
-          reason: `The public Revolut endpoint did not return the requested ${personalContext.plan} plan.`,
+          reason: "The public Revolut endpoint did not return the required STANDARD plan.",
           sourceId: "revolut-public-json-quote",
           sourceUrl,
         });
@@ -108,6 +97,16 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       });
     }
 
+    if (observation.plan !== "STANDARD") {
+      return createProviderUnavailableResult({
+        provider: this.provider,
+        request,
+        reason: "The validated Revolut observation did not contain the required STANDARD plan.",
+        sourceId: "revolut-public-json-quote",
+        sourceUrl: observation.sourceUrl,
+      });
+    }
+
     const effectiveRate = decimalToPlainString(
       decimal(observation.targetAmount).dividedBy(request.sourceAmount),
     );
@@ -121,6 +120,12 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       senderAmount: request.sourceAmount,
     });
     const feeCoverage = evaluateRevolutFeeCoverage({ at: new Date(request.requestedAt) });
+    const planQuotes = calculateRevolutPlanQuotes({
+      observation,
+      sourceCurrency: request.sourceCurrency,
+      targetCurrency: request.targetCurrency,
+      requestedAt: request.requestedAt,
+    });
 
     return availableQuoteSchema.parse({
       kind: "quote",
@@ -146,8 +151,9 @@ export class RevolutProviderAdapter implements ProviderAdapter {
       reliability: "MEDIUM",
       sourceId: "revolut-public-json-quote",
       sourceUrl: observation.sourceUrl,
-      customerPlan: personalContext.plan,
+      customerPlan: "STANDARD",
       disclaimer: revolutIndicativeWarning,
+      planQuotes,
       providerDetails: {
         type: "REVOLUT_PERSONAL",
         plan: observation.plan,

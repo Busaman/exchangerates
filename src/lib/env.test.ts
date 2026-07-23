@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { quoteApiResponseSchema } from "@/domain/quote-api";
-import { resolveRevolutAdapterEnabled } from "@/lib/env";
+import { resolveRevolutAdapterEnabled, resolveZenAdapterEnabled } from "@/lib/env";
 import { createProviderRegistry } from "@/providers/provider-registry";
 
 afterEach(() => {
@@ -61,5 +61,24 @@ describe("Revolut experimental feature gate", () => {
       provider: { id: "REVOLUT" },
     });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("ZEN experimental feature gate", () => {
+  it.each([
+    ["true", true],
+    ["false", false],
+    [undefined, false],
+    ["", false],
+    ["yes", false],
+    ["TRUE", false],
+  ] as const)("resolves %s without throwing", (value, expected) => {
+    const warn = vi.fn();
+
+    expect(resolveZenAdapterEnabled(value, warn)).toBe(expected);
+    expect(
+      createProviderRegistry({ revolutEnabled: false, zenEnabled: expected }).get("ZEN").status,
+    ).toBe(expected ? "SUPPORTED" : "UNAVAILABLE");
+    expect(warn).toHaveBeenCalledTimes(value === "yes" || value === "TRUE" ? 1 : 0);
   });
 });

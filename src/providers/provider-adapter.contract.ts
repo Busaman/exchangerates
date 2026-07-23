@@ -41,7 +41,13 @@ export function runProviderAdapterContract({
                 result.providerDetails.totalFee.amount,
                 result.providerDetails.totalSourceCost.amount,
               ]
-            : []),
+            : result.providerDetails?.type === "ZEN_PLANS"
+              ? [
+                  result.providerDetails.liveProRate,
+                  result.providerDetails.sourceCurrencyPerTargetUnit,
+                  result.providerDetails.endpointProTargetAmount.amount,
+                ]
+              : []),
         ]) {
           expect(value).toMatch(decimalPattern);
         }

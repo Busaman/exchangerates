@@ -1,9 +1,10 @@
 import { providerIdentifierSchema, type ProviderIdentifier } from "@/domain/quote";
-import { resolveRevolutAdapterEnabled } from "@/lib/env";
+import { resolveRevolutAdapterEnabled, resolveZenAdapterEnabled } from "@/lib/env";
 import { MockProviderAdapter } from "@/providers/mock-provider";
 import type { ProviderAdapter } from "@/providers/provider-adapter";
 import { RevolutProviderAdapter } from "@/providers/revolut/revolut-provider";
 import { UnavailableProviderAdapter } from "@/providers/unavailable-provider";
+import { ZenProviderAdapter } from "@/providers/zen/zen-provider";
 
 export type ProviderRegistrationStatus = "SUPPORTED" | "UNAVAILABLE";
 
@@ -58,10 +59,13 @@ export class ProviderAdapterRegistry {
 
 export function createProviderRegistry({
   revolutEnabled,
+  zenEnabled = false,
 }: {
   revolutEnabled: boolean;
+  zenEnabled?: boolean;
 }): ProviderAdapterRegistry {
   const revolutAdapter = new RevolutProviderAdapter();
+  const zenAdapter = new ZenProviderAdapter();
 
   return new ProviderAdapterRegistry([
     { adapter: new MockProviderAdapter(), status: "SUPPORTED" },
@@ -80,9 +84,19 @@ export function createProviderRegistry({
             "The experimental Revolut JSON integration is disabled pending staging request-contract and legal verification.",
           sourceId: "revolut-personal-experimental-disabled",
         },
+    zenEnabled
+      ? { adapter: zenAdapter, status: "SUPPORTED", timeoutMs: 3_000 }
+      : {
+          adapter: zenAdapter,
+          status: "UNAVAILABLE",
+          reason:
+            "The experimental ZEN Pro public-page integration is disabled pending legal, product and longer staging verification.",
+          sourceId: "zen-public-landing-currency-converter-disabled",
+        },
   ]);
 }
 
 export const providerRegistry = createProviderRegistry({
   revolutEnabled: resolveRevolutAdapterEnabled(process.env.REVOLUT_ADAPTER_ENABLED),
+  zenEnabled: resolveZenAdapterEnabled(process.env.ZEN_ADAPTER_ENABLED),
 });

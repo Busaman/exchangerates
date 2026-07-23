@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { QuoteApiRequest } from "@/domain/quote-api";
 import type { RevolutPersonalPlan, SupportedCurrencyCode } from "@/domain/quote";
 
-export const comparisonProviderSelectionSchema = z.enum(["REVOLUT", "ALL_REGISTERED"]);
+export const comparisonProviderSelectionSchema = z.enum(["REVOLUT", "ZEN", "ALL_REGISTERED"]);
 
 export type ComparisonProviderSelection = z.infer<typeof comparisonProviderSelectionSchema>;
 
@@ -21,14 +21,20 @@ export function createComparisonRequest({
   providerSelection,
   revolutPlan,
 }: ComparisonRequestInput): QuoteApiRequest {
-  const request: QuoteApiRequest = {
+  const baseRequest: QuoteApiRequest = {
     sourceCurrency,
     targetCurrency,
     sourceAmount,
     customerPlan: null,
-    providerContexts: {
-      REVOLUT: { plan: revolutPlan },
-    },
+  };
+
+  if (providerSelection === "ZEN") {
+    return { ...baseRequest, providers: ["ZEN"] };
+  }
+
+  const request: QuoteApiRequest = {
+    ...baseRequest,
+    providerContexts: { REVOLUT: { plan: revolutPlan } },
   };
 
   if (providerSelection === "REVOLUT") {

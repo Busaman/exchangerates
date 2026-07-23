@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { decimal, decimalPattern } from "@/domain/decimal";
 import { calculateRankingEffectiveRate } from "@/domain/quote-ranking";
+import { planQuoteSchema } from "@/domain/plan-quote";
 
 export const providerIdentifierSchema = z.enum([
   "MOCK_PROVIDER",
   "UNAVAILABLE_PROVIDER",
   "REVOLUT",
+  "ZEN",
 ]);
 export const supportedCurrencyCodeSchema = z.enum(["EUR", "HUF"]);
 export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/);
@@ -72,6 +74,46 @@ export const positiveMonetaryAmountSchema = z.object({
   amount: positiveDecimalStringSchema,
 });
 
+const revolutProviderDetailsSchema = z
+  .object({
+    type: z.literal("REVOLUT_PERSONAL"),
+    plan: revolutPersonalPlanSchema,
+    displayedBaseRate: positiveDecimalStringSchema,
+    sourceCurrencyPerTargetUnit: positiveDecimalStringSchema.optional(),
+    endpointRecipientAmount: monetaryAmountSchema,
+    targetAmountCalculation: z.literal("ENDPOINT_HUNDREDTH_UNIT_DECODED"),
+    fxFee: monetaryAmountSchema,
+    totalFee: monetaryAmountSchema,
+    feePercentage: decimalStringSchema,
+    feePercentageBasis: z.literal("TOTAL_FEE_DIVIDED_BY_SENDER_AMOUNT"),
+    feeCurrency: currencyCodeSchema,
+    totalSourceCost: monetaryAmountSchema,
+    fxTooltip: z.string().min(1).optional(),
+    planTooltipLong: z.string().min(1).optional(),
+    planTooltipShort: z.string().min(1).optional(),
+    allowanceAssumption: z.literal("FULL_ALLOWANCE_ASSUMED"),
+    sessionClassification: z.enum(["WEEKDAY", "WEEKEND"]),
+    feeCoverage: z.enum(["ENDPOINT_REPORTED_BEST_CASE", "UNVERIFIED_WEEKEND"]),
+    feeCoverageWarning: z.string().min(1).optional(),
+    indicativeWarning: z.string().min(1),
+  })
+  .strict();
+
+const zenProviderDetailsSchema = z
+  .object({
+    type: z.literal("ZEN_PLANS"),
+    defaultPlan: z.literal("Free"),
+    liveProRate: positiveDecimalStringSchema,
+    sourceCurrencyPerTargetUnit: positiveDecimalStringSchema,
+    endpointProTargetAmount: positiveMonetaryAmountSchema,
+    targetAmountCalculation: z.literal("POLICY_DERIVED_TARGET_CURRENCY_ROUND_DOWN"),
+    feeDisclosure: z.literal("ZERO_ADDITIONAL_ZEN_FEE_PUBLIC_PAGE"),
+    rateTimestampBasis: z.literal("RETRIEVAL_TIME_SOURCE_HAS_NO_TIMESTAMP"),
+    pricingPolicyRetrievedAt: z.iso.date(),
+    indicativeWarning: z.string().min(1),
+  })
+  .strict();
+
 export const quoteRequestSchema = z
   .object({
     sourceCurrency: supportedCurrencyCodeSchema,
@@ -110,30 +152,9 @@ export const availableQuoteSchema = z
     sourceUrl: z.url().optional(),
     customerPlan: z.string().min(1).optional(),
     disclaimer: z.string().min(1).optional(),
+    planQuotes: z.array(planQuoteSchema).min(1).optional(),
     providerDetails: z
-      .object({
-        type: z.literal("REVOLUT_PERSONAL"),
-        plan: revolutPersonalPlanSchema,
-        displayedBaseRate: positiveDecimalStringSchema,
-        sourceCurrencyPerTargetUnit: positiveDecimalStringSchema.optional(),
-        endpointRecipientAmount: monetaryAmountSchema,
-        targetAmountCalculation: z.literal("ENDPOINT_HUNDREDTH_UNIT_DECODED"),
-        fxFee: monetaryAmountSchema,
-        totalFee: monetaryAmountSchema,
-        feePercentage: decimalStringSchema,
-        feePercentageBasis: z.literal("TOTAL_FEE_DIVIDED_BY_SENDER_AMOUNT"),
-        feeCurrency: currencyCodeSchema,
-        totalSourceCost: monetaryAmountSchema,
-        fxTooltip: z.string().min(1).optional(),
-        planTooltipLong: z.string().min(1).optional(),
-        planTooltipShort: z.string().min(1).optional(),
-        allowanceAssumption: z.literal("FULL_ALLOWANCE_ASSUMED"),
-        sessionClassification: z.enum(["WEEKDAY", "WEEKEND"]),
-        feeCoverage: z.enum(["ENDPOINT_REPORTED_BEST_CASE", "UNVERIFIED_WEEKEND"]),
-        feeCoverageWarning: z.string().min(1).optional(),
-        indicativeWarning: z.string().min(1),
-      })
-      .strict()
+      .discriminatedUnion("type", [revolutProviderDetailsSchema, zenProviderDetailsSchema])
       .optional(),
   })
   .superRefine((quote, context) => {
@@ -169,24 +190,66 @@ export const availableQuoteSchema = z
       });
     }
 
+    if (quote.planQuotes !== undefined) {
+      const defaults = quote.planQuotes.filter((planQuote) => planQuote.isDefaultPlan);
+      if (defaults.length !== 1) {
+        context.addIssue({
+          code: "custom",
+          message: "Provider plan quotes require exactly one default plan",
+          path: ["planQuotes"],
+        });
+      }
+      for (const [index, planQuote] of quote.planQuotes.entries()) {
+        if (planQuote.provider !== quote.provider.id) {
+          context.addIssue({
+            code: "custom",
+            message: "Plan quote provider must match the top-level provider",
+            path: ["planQuotes", index, "provider"],
+          });
+        }
+        if (planQuote.rankingEligibility === "DEFAULT_PLAN_ELIGIBLE" && !planQuote.isDefaultPlan) {
+          context.addIssue({
+            code: "custom",
+            message: "Only the default plan may participate in provider ranking",
+            path: ["planQuotes", index, "rankingEligibility"],
+          });
+        }
+        if (planQuote.isDefaultPlan && planQuote.quoteKind === "unavailable") {
+          context.addIssue({
+            code: "custom",
+            message: "An available top-level quote requires an available default plan",
+            path: ["planQuotes", index],
+          });
+        }
+      }
+    }
+
+    const endpointTargetAmount =
+      quote.providerDetails?.type === "REVOLUT_PERSONAL"
+        ? quote.providerDetails.endpointRecipientAmount
+        : quote.providerDetails?.type === "ZEN_PLANS"
+          ? quote.providerDetails.endpointProTargetAmount
+          : undefined;
     if (
-      quote.providerDetails?.endpointRecipientAmount.currency !== undefined &&
-      quote.providerDetails.endpointRecipientAmount.currency !== quote.pair.targetCurrency
+      endpointTargetAmount !== undefined &&
+      endpointTargetAmount.currency !== quote.pair.targetCurrency
     ) {
       context.addIssue({
         code: "custom",
-        message: "Endpoint recipient currency must match the quote target currency",
-        path: ["providerDetails", "endpointRecipientAmount", "currency"],
+        message: "Endpoint target currency must match the quote target currency",
+        path: ["providerDetails", "endpointTargetAmount", "currency"],
       });
     }
 
-    const totalSourceCost = quote.providerDetails?.totalSourceCost;
+    const revolutDetails =
+      quote.providerDetails?.type === "REVOLUT_PERSONAL" ? quote.providerDetails : undefined;
+    const totalSourceCost = revolutDetails?.totalSourceCost;
     if (totalSourceCost !== undefined) {
       const sourceCurrency = quote.sourceAmount.currency;
       for (const [path, currency] of [
-        [["providerDetails", "fxFee", "currency"], quote.providerDetails?.fxFee.currency],
-        [["providerDetails", "totalFee", "currency"], quote.providerDetails?.totalFee.currency],
-        [["providerDetails", "feeCurrency"], quote.providerDetails?.feeCurrency],
+        [["providerDetails", "fxFee", "currency"], revolutDetails?.fxFee.currency],
+        [["providerDetails", "totalFee", "currency"], revolutDetails?.totalFee.currency],
+        [["providerDetails", "feeCurrency"], revolutDetails?.feeCurrency],
         [["providerDetails", "totalSourceCost", "currency"], totalSourceCost.currency],
       ] as const) {
         if (currency !== sourceCurrency) {

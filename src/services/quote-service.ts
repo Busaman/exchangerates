@@ -181,6 +181,9 @@ export async function getQuotes(
     )
       ? (["REVOLUT_FEE_INCOMPLETE"] as const)
       : []),
+    ...(quotes.some((quote) => quote.provider.id === "ZEN" && quote.planQuotes !== undefined)
+      ? (["ZEN_INDICATIVE"] as const)
+      : []),
   ];
 
   return quoteApiResponseSchema.parse({

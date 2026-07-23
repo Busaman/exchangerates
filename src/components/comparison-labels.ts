@@ -3,6 +3,7 @@ import type { ProviderIdentifier, QuoteResult } from "@/domain/quote";
 export function isFullAllowanceAssumedQuote(result: QuoteResult): boolean {
   return (
     result.kind === "quote" &&
+    result.providerDetails?.type === "REVOLUT_PERSONAL" &&
     result.providerDetails?.allowanceAssumption === "FULL_ALLOWANCE_ASSUMED"
   );
 }
@@ -23,6 +24,9 @@ export function bestResultBadgeLabel(
     return null;
   if (isFullAllowanceAssumedQuote(result)) {
     return "Legjobb indikatív best-case eredmény · teljes keret feltételezve";
+  }
+  if (result.sourceType === "ESTIMATED") {
+    return "Legjobb elérhető becsült indikatív eredmény";
   }
   return result.sourceType === "MOCK"
     ? "Legjobb elérhető mock eredmény"

@@ -21,6 +21,10 @@ after source/legal review. Investigate Gránit Bank only if a reliable legal sou
 The Wise comparison endpoint technical investigation is complete with a
 `PROCEED_WITH_RESTRICTIONS` verdict: the isolated parser and opt-in script are not a provider
 integration. A future Wise adapter requires a separate legal/product-approved PR and staging gate.
+The ZEN Pro transport, Free/Gold/Platinum/Pro plan calculations, cache, validation and UI/API wiring
+are implemented. Cookie-free native Node HTTPS probes and a protected Vercel Preview succeeded in
+both directions after the blocked Undici/fetch transport was replaced. The adapter remains disabled
+by default pending legal/product review and longer operational observation.
 
 ## 4. Historical rate storage — planned
 
@@ -47,12 +51,23 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
+**Return draft PR #8 for review with the verified native ZEN transport. Keep ZEN production-disabled;
+then run a controlled, longer staging comparison against the official calculator and complete
+legal/product review before any production-enablement decision. Resolve issue #5 with simultaneous
+weekend Revolut evidence before any paid weekend Revolut quote.**
+
 **Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
 `Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed
-only `STANDARD`; verify whether and under which public request semantics the other four personal plans
-are returned. Verify correctly scaled below/above-allowance amounts, actual weekend behavior,
+only `STANDARD`; verify the new policy-derived HUF-source paid plans against simultaneous app
+observations. Verify correctly scaled below/above-allowance amounts, actual weekend behavior,
 latency, rate-limit/error rates, cache transitions and response-contract stability. Obtain
 legal/product approval for the undocumented JSON endpoint before production enablement; add telemetry
 without a fallback. Correctly decoded weekday quotes may rank, while the current safety gate keeps
 all weekend Revolut rows visible but out of best-result ranking. Validate that remaining gate against
 converter/app samples during an actual Friday 17:00 ET–Sunday 18:00 ET window before relaxation.**
+
+The 2026-07-19 ZEN transport follow-up is complete. The public calculator still uses
+`landing_currencies.php`; no session or nonce was required. Native Node HTTPS and curl returned valid
+cookie-free quotes locally, and protected Preview returned valid NeoRate results in both directions.
+The temporary Preview flag was removed and production remained disabled. Do not reintroduce Undici
+fetch or add cookie/challenge workarounds.
