@@ -36,7 +36,7 @@ const planQuoteCommonSchema = z.object({
   excessMarkup: decimalStringSchema,
   offMarketMarkup: decimalStringSchema,
   totalMarkup: decimalStringSchema,
-  pricingWindow: z.enum(["WEEKDAY", "OFF_MARKET", "WEEKEND_UNVERIFIED"]),
+  pricingWindow: z.enum(["WEEKDAY", "OFF_MARKET", "WEEKEND_UNVERIFIED", "NOT_APPLICABLE"]),
   calculationNote: z.string().min(1),
   source: planQuoteSourceSchema,
   fetchedAt: z.iso.datetime(),

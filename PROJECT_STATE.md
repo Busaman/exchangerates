@@ -1,6 +1,6 @@
 # NeoRate project state
 
-Last updated: 2026-07-19
+Last updated: 2026-07-23
 
 ## Runtime providers
 
@@ -10,7 +10,21 @@ Last updated: 2026-07-19
 - ZEN.COM plans: live Pro transport plus derived Free/Gold/Platinum quotes, cache, API/UI contract
   and tests implemented; cookie-free local and protected-Preview smoke tests pass, but the adapter
   remains disabled by default pending review.
-- Wise: investigation/parser only; not registered or exposed at runtime.
+- Wise Personal: implemented as gated `LIVE_UNOFFICIAL` public comparison quote; disabled by default
+  pending protected-Preview and legal/product verification.
+
+## Wise status
+
+- Source: `GET https://wise.com/gateway/v4/comparisons`.
+- Scope: EUR→HUF and HUF→EUR for Hungary; Personal / Alapárazás only.
+- Semantics: total source debit in `amount`, included source-currency fee in `fee`, pre-fee
+  directional `rate`, net payout in `receivedAmount`. The fee is used exactly once.
+- Classification: indicative `LIVE_UNOFFICIAL` bank-transfer comparison, not account-specific or an
+  executable transfer quote.
+- Validation: exact `alias === "wise"`, one provider and one quote, country/pair/amount/timestamp
+  checks and decimal-safe payout reconciliation. HTTP 200 without Wise fails closed.
+- Cache: exact canonical amount/pair/HU key, 60s fresh, 30s negative, 15m stale, single-flight.
+- Gate: only exact `WISE_ADAPTER_ENABLED=true`; default and malformed values disable safely.
 
 ## ZEN plan status
 
@@ -65,6 +79,6 @@ Node route runtime are covered deterministically.
 
 ## Next action
 
-Keep PR #8 draft for renewed review. The legitimate cookie-free server transport is operational in
-local and protected Preview tests, but ZEN must remain production-default-off until legal/product
-review and longer staging observation approve the undocumented `LIVE_UNOFFICIAL` source.
+Deploy the Fintech v2 three-provider branch to protected Preview with all three provider gates enabled
+only in Preview. Smoke-test HUF→EUR and EUR→HUF, keep production unchanged, and return the new draft
+PR for review.

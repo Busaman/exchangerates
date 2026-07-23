@@ -53,12 +53,14 @@ Missing, empty, `false`, or any unrecognized value fails safely to disabled and 
 registry or route-module creation; this optional experimental flag is not parsed by a throwing
 module-scope schema and affects no other provider.
 
-The Wise comparison endpoint investigation is deliberately outside the runtime adapter graph.
-`src/providers/wise/wise-comparison-parser.ts` validates already-fetched sanitized evidence only;
-it performs no network access and Wise has no provider identifier, registry entry, API/UI option,
-ranking path, or production feature flag. A future `LIVE_UNOFFICIAL` adapter requires a separate
-approved change after the technical, legal, and product restrictions in
-`docs/WISE_ENDPOINT_INVESTIGATION.md` are resolved.
+The Wise Personal adapter is isolated under `src/providers/wise` and builds on the reviewed
+investigation parser. It calls only Wise's public comparison endpoint with Hungarian country
+context, exact `alias === "wise"` selection and exactly one understandable quote. `amount` is the
+user's total source debit, the endpoint fee is deducted from that amount once, and
+`receivedAmount` is the net target payout. The endpoint result is a bank-transfer comparison, not an
+account-specific or executable transfer quote. It is therefore `LIVE_UNOFFICIAL`, indicative and
+registry-disabled unless `WISE_ADAPTER_ENABLED` is exactly lowercase `true`. No cookie, auth token,
+browser identifier or competitor row is accepted.
 
 The ZEN Pro adapter is isolated under `src/providers/zen`. It posts source-driven form data only to
 `https://www.zen.com/landing_currencies.php` through a replaceable server-side transport. The
@@ -168,6 +170,13 @@ ranked best. A failed refresh never changes the original `rateTimestamp` or `ret
 stale interval, the adapter returns unavailable without numbers. A future shared cache must preserve
 these semantics.
 
+The Wise client uses the same conservative cache boundaries established by its investigation:
+60-second fresh, 30-second negative and 15-minute stale windows. Keys include the exact canonical
+source amount, direction and `sourceCountry=HU`; equivalent spellings share a key while adjacent
+amounts never do. Concurrent identical requests share one in-flight call. The provider timestamp
+remains the endpoint's `dateCollected`; a failed refresh never renews it, and stale Wise quotes are
+visible but ranking-ineligible.
+
 ## Persistence
 
 `Provider`, `ProviderPlan` and directional `CurrencyPair` are reference entities. `QuoteSnapshot`
@@ -234,6 +243,13 @@ controlled release step, not from request handlers. Scheduled ingestion can begi
 and move to a durable queue/worker when rate volume or provider limits require it. Provider adapters,
 cache and ingestion workers can separate into services without changing the normalized domain/API.
 Partition or archive quote history only after measured volume justifies it.
+
+The Fintech v2 browser surface is a client island composed from maintainable React components. It
+submits exactly `REVOLUT`, `ZEN` and `WISE` to the quote API and renders their default plans in the
+active ranking. Unimplemented prototype providers are presentation-only entries in a separate
+`Hamarosan` section: they are not provider identifiers, API selections or ranking candidates and
+never carry placeholder numbers. Theme and HU/EN controls are browser-local preferences and do not
+change quote semantics.
 
 ## Provider plan normalization
 

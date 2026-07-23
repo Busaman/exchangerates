@@ -184,6 +184,11 @@ export async function getQuotes(
     ...(quotes.some((quote) => quote.provider.id === "ZEN" && quote.planQuotes !== undefined)
       ? (["ZEN_INDICATIVE"] as const)
       : []),
+    ...(quotes.some(
+      (quote) => quote.provider.id === "WISE" && quote.sourceType === "LIVE_UNOFFICIAL",
+    )
+      ? (["WISE_INDICATIVE"] as const)
+      : []),
   ];
 
   return quoteApiResponseSchema.parse({

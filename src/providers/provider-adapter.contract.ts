@@ -47,7 +47,14 @@ export function runProviderAdapterContract({
                   result.providerDetails.sourceCurrencyPerTargetUnit,
                   result.providerDetails.endpointProTargetAmount.amount,
                 ]
-              : []),
+              : result.providerDetails?.type === "WISE_PERSONAL"
+                ? [
+                    result.providerDetails.displayedBaseRate,
+                    result.providerDetails.endpointFee.amount,
+                    result.providerDetails.totalSourceCost.amount,
+                    result.providerDetails.markup,
+                  ]
+                : []),
         ]) {
           expect(value).toMatch(decimalPattern);
         }

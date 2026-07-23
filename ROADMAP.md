@@ -19,8 +19,9 @@ timeout, amount/plan-aware cache, negative cache and single-flight control are c
 operationally fragile and indicative. Evaluate Wise, ZEN and PayPal independently only
 after source/legal review. Investigate Gránit Bank only if a reliable legal source is identified.
 The Wise comparison endpoint technical investigation is complete with a
-`PROCEED_WITH_RESTRICTIONS` verdict: the isolated parser and opt-in script are not a provider
-integration. A future Wise adapter requires a separate legal/product-approved PR and staging gate.
+`PROCEED_WITH_RESTRICTIONS` verdict. A disabled-by-default Wise Personal adapter now preserves its
+bank-transfer comparison semantics, exact returned fee and amount-specific 60-second cache. It
+requires protected-Preview evidence and legal/product approval before any production decision.
 The ZEN Pro transport, Free/Gold/Platinum/Pro plan calculations, cache, validation and UI/API wiring
 are implemented. Cookie-free native Node HTTPS probes and a protected Vercel Preview succeeded in
 both directions after the blocked Undici/fetch transport was replaced. The adapter remains disabled
@@ -51,10 +52,11 @@ Expand from directional EUR/HUF and HUF/EUR using measured demand and verified p
 
 ## Next recommended task
 
-**Return draft PR #8 for review with the verified native ZEN transport. Keep ZEN production-disabled;
-then run a controlled, longer staging comparison against the official calculator and complete
-legal/product review before any production-enablement decision. Resolve issue #5 with simultaneous
-weekend Revolut evidence before any paid weekend Revolut quote.**
+**Validate the Fintech v2 three-provider build in protected Vercel Preview with Revolut, ZEN and Wise
+enabled only there. Compare both directions against the three public provider surfaces, record
+latency/schema reliability, then obtain legal/product approval before any production-enablement
+decision. Keep every production gate disabled and resolve issue #5 with simultaneous weekend
+Revolut evidence.**
 
 **Deploy with `REVOLUT_ADAPTER_ENABLED=true` only in controlled Vercel staging using the verified
 `Accept-Language: hu` locale header. The local probe returned HTTP 200 in both directions but exposed

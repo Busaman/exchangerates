@@ -24,11 +24,12 @@ const common = {
 
 describe("provider plan UI", () => {
   it("defaults to the accessible free-plan segmented view", () => {
-    const html = renderToStaticMarkup(<ComparisonTool />);
+    const html = renderToStaticMarkup(<ComparisonTool language="hu" />);
     expect(html).toContain("Csomagok megjelenítése");
     expect(html).toMatch(/aria-pressed="true"[^>]*>Ingyenes csomagok/);
     expect(html).toMatch(/aria-pressed="false"[^>]*>Minden csomag/);
-    expect(html).toContain("a fizetős csomagok nem kapnak külön globális rangot");
+    expect(html).toContain("Aktív szolgáltatók");
+    expect(html).toContain("Hamarosan");
   });
 
   it("renders numeric derived plans and numeric-field-free unavailable plans truthfully", () => {
@@ -57,9 +58,9 @@ describe("provider plan UI", () => {
     expect(html).toContain("Gold");
     expect(html).toContain("274,35");
     expect(html).toContain("Plus");
-    expect(html).toContain("UNAVAILABLE");
-    expect(html).toContain("Élő csomagárfolyam nem számítható biztonságosan");
-    expect(html).toContain("A havi díj nincs beleszámítva");
-    expect(html).toContain("Nincs külön pénzbeli díj (árfolyamba épített felár)");
+    expect(html).toContain("unavailable");
+    expect(html).toContain("Nincs biztonságosan megjeleníthető élő szám");
+    expect(html).toContain("A havi díj nincs beszámítva");
+    expect(html).toContain("Árfolyamba épített");
   });
 });

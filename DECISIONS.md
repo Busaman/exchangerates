@@ -324,3 +324,32 @@ provision is not manually added.
 
 Both sources remain undocumented `LIVE_UNOFFICIAL` observations, production-default-off, indicative,
 and subject to staging plus legal/product review.
+
+## ADR-015 — Wise Personal comparison adapter and Fintech v2 private staging
+
+**Status:** Accepted behind a disabled operational gate (2026-07-23)
+
+Implement Wise Personal from the already reviewed `PROCEED_WITH_RESTRICTIONS` investigation of
+`GET https://wise.com/gateway/v4/comparisons`. Requests retain `sourceCountry=HU`,
+`filter=POPULAR`, `includeWise=true` and `numberOfProviders=3`, use only JSON Accept plus an honest
+NeoRate User-Agent, and send no cookie, authorization, frontend token or browser identity. Select
+only exact provider alias `wise` and require exactly one understandable quote. HTTP 200 without Wise
+is unavailable, not a zero quote.
+
+Interpret the evidence-bound SEND response as follows: `amount` is the total source-side debit,
+`fee` is deducted from that amount, `rate` is the pre-fee directional rate and `receivedAmount` is
+the rounded net target payout. Preserve the returned fee exactly once. Do not add a Hungarian fee
+or treat `amount + fee` as the cost; ranking uses `receivedAmount / amount`. Every successful result
+is `LIVE_UNOFFICIAL`, Personal / Alapárazás, bank-transfer comparison context, and explicitly not
+account-specific or executable.
+
+Use exact amount/direction/HU cache keys, 60 seconds fresh, 30 seconds negative, 15 minutes stale and
+single-flight deduplication. Only a fresh validated quote can rank. The gate is typo-safe: only exact
+lowercase `WISE_ADAPTER_ENABLED=true` enables outbound work; missing, empty, false or malformed values
+disable Wise without affecting other providers. Production remains default-off pending protected
+Preview evidence and legal/product approval.
+
+Adopt the Claude Fintech v2 visual direction without its templating runtime or static financial
+numbers. The operational ranking contains only Revolut Standard, ZEN Free and Wise Personal.
+Prototype-only providers appear separately as `Hamarosan`, with no numeric amount, fee, rate or
+global rank.

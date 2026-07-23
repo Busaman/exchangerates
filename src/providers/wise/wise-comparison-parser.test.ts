@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { decimal } from "@/domain/decimal";
-import { providerIdentifierSchema } from "@/domain/quote";
 import eurHufFixture from "@/providers/wise/fixtures/eur-huf-comparison.json";
 import hufEurFixture from "@/providers/wise/fixtures/huf-eur-comparison.json";
 import {
@@ -168,10 +167,5 @@ describe("parseWiseComparisonResponse", () => {
         request: hufRequest,
       }),
     ).toThrow("FUTURE_QUOTE_TIMESTAMP");
-  });
-
-  it("keeps Wise outside the runtime provider identifier contract", () => {
-    expect(providerIdentifierSchema.options).not.toContain("WISE");
-    expect(providerIdentifierSchema.safeParse("WISE").success).toBe(false);
   });
 });
