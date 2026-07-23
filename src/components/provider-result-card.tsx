@@ -1,5 +1,9 @@
 import type { Language } from "@/components/fintech-shell";
-import { formatExactFeeAmount, formatFeePercentage } from "@/components/comparison-format";
+import {
+  formatComparisonRate,
+  formatExactFeeAmount,
+  formatFeePercentage,
+} from "@/components/comparison-format";
 import {
   bestResultBadgeLabel,
   isFeeCoverageIncompleteQuote,
@@ -102,7 +106,8 @@ export function ProviderResultCard({
                 {formatMoney(result.targetAmount.amount, result.targetAmount.currency, language)}
               </strong>
               <small>
-                1 {result.pair.sourceCurrency} = {formatRate(result.rankingEffectiveRate)}{" "}
+                1 {result.pair.sourceCurrency} ={" "}
+                {formatComparisonRate(result.rankingEffectiveRate, result.pair.targetCurrency)}{" "}
                 {result.pair.targetCurrency}
               </small>
             </div>
