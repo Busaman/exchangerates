@@ -246,9 +246,11 @@ one EUR; the independently retrieved opposite direction is never replaced with t
 The adapter uses a replaceable server-side transport, a 2.5-second source timeout, manual redirects,
 a 64 KiB response limit, strict JSON/Zod validation, and decimal.js plausibility and amount/rate
 consistency checks. The default transport is Node's native HTTPS client and sends only the ordinary
-public-calculator JSON/AJAX headers, official Origin/Referer and an identifying NeoRate User-Agent.
-It sends no cookies, authorization, Cloudflare clearance data, browser identifiers or browser
-automation, and discards every response cookie. The `alternatives` collection is intentionally untrusted and ignored; its
+form Content-Type, byte-accurate Content-Length, official calculator-page Referer and an identifying
+NeoRate User-Agent. A controlled one-variable-at-a-time matrix proved that Origin, Accept,
+Accept-Language and `X-Requested-With` are unnecessary. It sends no cookies, authorization,
+Cloudflare clearance data, browser identifiers or browser automation, and discards every response
+cookie. The `alternatives` collection is intentionally untrusted and ignored; its
 Revolut/Wise rows can never create or modify NeoRate Revolut/Wise provider observations. The endpoint
 does not supply a rate timestamp, so a successful quote explicitly uses retrieval time as its rate
 observation timestamp.
@@ -265,6 +267,12 @@ safely disable ZEN. Disabled, 403, timeout, malformed JSON, invalid schema/rate,
 amount behavior is numeric-field-free unavailable; no reference, mock, reciprocal-opposite-direction,
 or competitor fallback is substituted. Amount/pair-specific fresh, negative, stale and single-flight
 caches remain separate from transport state.
+
+Because the selected transport imports `node:https`, the versioned quote route is pinned to the
+Next.js Node runtime; Edge is unsupported. HTTP 204, 205 and 304 are classified as upstream protocol
+errors before constructing a body-bearing `Response`. Empty HTTP 200 JSON is `INVALID_JSON`. These
+failures enter the existing negative/stale behavior, release single-flight state, and never expose
+numeric placeholders.
 
 ## ADR-014 — Provider-independent plan quotes and default-plan ranking
 

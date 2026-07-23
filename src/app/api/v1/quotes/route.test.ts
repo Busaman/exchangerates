@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createQuotePostHandler } from "@/app/api/v1/quotes/handler";
 import { quoteApiErrorResponseSchema, quoteApiResponseSchema } from "@/domain/quote-api";
-import { POST } from "@/app/api/v1/quotes/route";
+import { POST, runtime } from "@/app/api/v1/quotes/route";
 
 function postJson(body: unknown): Request {
   return new Request("http://localhost/api/v1/quotes", {
@@ -20,6 +20,10 @@ const validRequest = {
 };
 
 describe("POST /api/v1/quotes", () => {
+  it("is pinned to the Node runtime required by provider transports", () => {
+    expect(runtime).toBe("nodejs");
+  });
+
   it("returns a validated partial-success response", async () => {
     const response = await POST(postJson(validRequest));
     const payload: unknown = await response.json();

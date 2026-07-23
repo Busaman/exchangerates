@@ -63,9 +63,10 @@ approved change after the technical, legal, and product restrictions in
 The ZEN Pro adapter is isolated under `src/providers/zen`. It posts source-driven form data only to
 `https://www.zen.com/landing_currencies.php` through a replaceable server-side transport. The
 default transport uses Node's native HTTPS client because controlled evidence showed that Undici
-`fetch` was blocked while native Node HTTPS and curl succeeded from the same host. It sends the
-calculator's ordinary JSON/AJAX accept, language, form content type, official Origin/Referer and an
-identifying NeoRate User-Agent; it never sends or retains cookies, authorization, browser/session
+`fetch` was blocked while native Node HTTPS and curl succeeded from the same host. Header isolation
+proved the smallest successful set is form Content-Type, byte-accurate Content-Length, an honest
+NeoRate User-Agent and the official calculator-page Referer. Origin, Accept, Accept-Language and
+`X-Requested-With` are not sent. It never sends or retains cookies, authorization, browser/session
 identifiers, or Cloudflare tokens. Response cookies are discarded before parsing. A strict
 2.5-second source timeout, manual redirects, 64 KiB response limit, content-type/JSON validation,
 Zod schemas, decimal.js guardrails and pair/amount/rate consistency checks fail closed. The runtime
@@ -73,6 +74,11 @@ does not call `get_currencies.php`; that endpoint is reserved for reference/hist
 a ZEN Pro customer quote source. Local and protected-Preview smoke tests succeeded in both directions,
 but ZEN remains registry-disabled unless exact `ZEN_ADAPTER_ENABLED=true` is set because the source
 is undocumented and operational/legal review is incomplete.
+
+`POST /api/v1/quotes` explicitly exports `runtime = "nodejs"` because the ZEN transport depends on
+`node:https`. Edge runtime execution is unsupported for this route. Unexpected upstream null-body
+statuses such as HTTP 204/304 are explicit protocol failures; no body-bearing Fetch `Response` is
+constructed and no numeric quote is emitted.
 
 The Revolut personal adapter is isolated under `src/providers/revolut`. Its dedicated client fetches
 only `GET https://www.revolut.com/api/exchange/quote` with allowlisted `amount`, `country=HU`,

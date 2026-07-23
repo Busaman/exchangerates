@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createZenTransportResponse,
   formatZenSourceAmount,
   selectZenResponseHeaders,
   ZenPublicQuoteClient,
@@ -53,13 +54,9 @@ describe("ZenPublicQuoteClient", () => {
       method: "POST",
       body: "action=change_currency&sourceCurrency=HUF&targetCurrency=EUR&amount=1000.00&endpoint=change_currency",
       headers: {
-        Accept: "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "hu-HU,hu;q=0.9",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        Origin: "https://www.zen.com",
         Referer: "https://www.zen.com/hu/online-valutavalto/",
         "User-Agent": "NeoRate server-side ZEN provider adapter",
-        "X-Requested-With": "XMLHttpRequest",
       },
       maximumResponseBytes: 64 * 1024,
     });
@@ -162,6 +159,75 @@ describe("ZenPublicQuoteClient", () => {
     expect(headers.get("content-length")).toBe("42");
     expect(headers.has("set-cookie")).toBe(false);
   });
+
+  it.each([204, 304])(
+    "classifies null-body HTTP %s as an explicit protocol error",
+    async (status) => {
+      expect(() =>
+        createZenTransportResponse(
+          status,
+          { "content-type": "application/json" },
+          Buffer.from("unexpected"),
+        ),
+      ).toThrowError(expect.objectContaining({ code: "HTTP_PROTOCOL_ERROR" }));
+
+      const client = new ZenPublicQuoteClient({
+        transport: async () =>
+          new Response(null, { status, headers: { "content-type": "application/json" } }),
+      });
+      await expect(
+        client.getQuote({ sourceCurrency: "HUF", targetCurrency: "EUR", sourceAmount: "1000" }),
+      ).rejects.toMatchObject({ code: "HTTP_PROTOCOL_ERROR" });
+    },
+  );
+
+  it("rejects an empty HTTP 200 JSON response without numeric output", async () => {
+    const client = new ZenPublicQuoteClient({
+      transport: async () =>
+        new Response(null, { status: 200, headers: { "content-type": "application/json" } }),
+    });
+
+    await expect(
+      client.getQuote({ sourceCurrency: "HUF", targetCurrency: "EUR", sourceAmount: "1000" }),
+    ).rejects.toMatchObject({ code: "INVALID_JSON" });
+  });
+
+  it.each([204, 304])(
+    "releases single-flight and cache state after null-body HTTP %s",
+    async (status) => {
+      let now = fixedNow;
+      let calls = 0;
+      let release: ((response: Response) => void) | undefined;
+      const client = new ZenPublicQuoteClient({
+        now: () => now,
+        negativeCacheMs: 10,
+        transport: async () => {
+          calls += 1;
+          if (calls === 1) {
+            return new Promise<Response>((resolve) => {
+              release = resolve;
+            });
+          }
+          return jsonResponse();
+        },
+      });
+      const input = {
+        sourceCurrency: "HUF" as const,
+        targetCurrency: "EUR" as const,
+        sourceAmount: "1000",
+      };
+      const first = client.getQuote(input);
+      const joined = client.getQuote(input);
+      await vi.waitFor(() => expect(calls).toBe(1));
+      release?.(new Response(null, { status }));
+
+      await expect(first).rejects.toMatchObject({ code: "HTTP_PROTOCOL_ERROR" });
+      await expect(joined).rejects.toMatchObject({ code: "HTTP_PROTOCOL_ERROR" });
+      now = new Date(fixedNow.getTime() + 11);
+      await expect(client.getQuote(input)).resolves.toMatchObject({ freshness: "FRESH" });
+      expect(calls).toBe(2);
+    },
+  );
 
   it("uses fresh cache and single-flight only for the identical canonical amount", async () => {
     let calls = 0;

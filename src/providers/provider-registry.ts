@@ -90,7 +90,7 @@ export function createProviderRegistry({
           adapter: zenAdapter,
           status: "UNAVAILABLE",
           reason:
-            "The experimental ZEN Pro public-page integration is disabled because cookie-free server-side access has not yet returned a valid quote in this environment.",
+            "The experimental ZEN Pro public-page integration is disabled pending legal, product and longer staging verification.",
           sourceId: "zen-public-landing-currency-converter-disabled",
         },
   ]);

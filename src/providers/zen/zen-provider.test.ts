@@ -89,7 +89,7 @@ describe("ZenProviderAdapter", () => {
     expect(JSON.stringify(result)).not.toContain("Wise");
   });
 
-  it.each(["HTTP_403", "TIMEOUT"] as const)(
+  it.each(["HTTP_403", "TIMEOUT", "HTTP_PROTOCOL_ERROR", "INVALID_JSON"] as const)(
     "returns a numeric-field-free unavailable result for %s",
     async (code) => {
       const quoteClient: ZenQuoteClient = {

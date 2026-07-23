@@ -66,9 +66,36 @@ cookie names and sanitized quote fields.
 
 The exact Cloudflare rule that distinguishes Undici from curl/native Node HTTPS is not observable.
 The evidence establishes a transport-path compatibility issue, not a missing CSRF/session contract.
-NeoRate does not spoof a browser fingerprint; it uses Node's standard HTTPS client and the small set
-of semantically correct public-calculator headers: JSON/AJAX Accept, Hungarian Accept-Language,
-form Content-Type, official Origin/Referer, descriptive User-Agent and `X-Requested-With`.
+NeoRate does not spoof a browser fingerprint; it uses Node's standard HTTPS client.
+
+### Header-isolation matrix
+
+The follow-up used one representative 1,000 HUF→EUR request and stopped adding headers at the first
+validated quote. The successful set was then confirmed with 10 EUR→HUF. The form body and endpoint
+were unchanged throughout.
+
+| Profile                    | Included header names                    | Status | Content type     | Quote schema       | Conclusion                  |
+| -------------------------- | ---------------------------------------- | -----: | ---------------- | ------------------ | --------------------------- |
+| `MINIMAL`                  | Content-Type, Content-Length, User-Agent |    200 | application/json | no; error envelope | insufficient                |
+| `MINIMAL_PLUS_JSON_ACCEPT` | minimal + Accept                         |    200 | application/json | no; error envelope | JSON Accept is insufficient |
+| `MINIMAL_PLUS_ORIGIN`      | minimal + Origin                         |    200 | application/json | no; error envelope | Origin is insufficient      |
+| `MINIMAL_PLUS_REFERER`     | minimal + Referer                        |    200 | application/json | yes                | smallest successful set     |
+| reverse confirmation       | minimal + Referer                        |    200 | application/json | yes                | EUR→HUF confirmed           |
+
+Because `MINIMAL_PLUS_REFERER` succeeded while Origin, Accept, Accept-Language,
+`X-Requested-With` and browser-style Accept were absent, none of those headers is required. Per the
+low-volume decision rule they were not added after the first successful profile. The retained
+headers have exactly these purposes:
+
+- Content-Type: declares the required form encoding;
+- Content-Length: byte-accurate HTTP request framing;
+- User-Agent: honestly identifies the NeoRate server-side client;
+- Referer: required by observed endpoint behavior to return a quote instead of its JSON error
+  envelope, and accurately identifies the official calculator page.
+
+The final minimal-header smoke at 2026-07-19T20:01:18Z returned 1,000 HUF → 2.74 EUR at
+`0.002747` in 606 ms and 10 EUR → 3,613.80 HUF at `361.380334` in 392 ms. Both were HTTP 200 JSON and
+passed schema and decimal reconciliation.
 
 ## Cookies and state classification
 
@@ -110,8 +137,8 @@ the validated live Pro base; the provider details preserve the Pro `LIVE_UNOFFIC
 
 ## Protected Preview evidence
 
-Deployment `dpl_AP1oHFDzU5N7CTZrQfyNhQVP7A3s` ran the working PR branch in Vercel `iad1`. Exact
-`ZEN_ADAPTER_ENABLED=true` was set temporarily for Preview only.
+Deployment `dpl_Bxrve4xsKiaAr5z7F2PquuepfuZ3` ran the minimal-header working tree in Vercel `iad1`.
+Exact `ZEN_ADAPTER_ENABLED=true` was set temporarily for Preview only.
 
 | Direction     | NeoRate HTTP | Result                       | Freshness | Numeric result          |
 | ------------- | -----------: | ---------------------------- | --------- | ----------------------- |
@@ -129,6 +156,11 @@ HTTPS transport behind the existing injectable boundary. No anonymous session ma
 Quote cache and transport state remain separate; there is no session state. Existing exact
 pair/amount fresh, negative, stale and single-flight behavior is unchanged, and stale results remain
 ranking-ineligible.
+
+The Next.js quote route is explicitly pinned to `runtime = "nodejs"`; Edge is unsupported because
+the transport imports `node:https`. HTTP 204/205/304 are rejected as explicit upstream protocol
+errors before constructing a body-bearing Fetch Response, while empty HTTP 200 JSON is rejected as
+malformed. Both paths remain numeric-field-free and release single-flight state normally.
 
 The investigation-only cookie policy and tests document how a future page flow would fail closed,
 but runtime never consumes those cookies. Challenge HTML, redirects, oversized responses, 403/429,

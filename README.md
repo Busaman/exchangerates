@@ -191,11 +191,14 @@ observations cannot win the ranking.
 
 The server posts only to `https://www.zen.com/landing_currencies.php` using form fields `action`,
 `sourceCurrency`, `targetCurrency`, `amount`, and `endpoint`. It never calls `get_currencies.php` for
-quotes. Its native Node HTTPS transport sends ordinary calculator Accept/Accept-Language,
-Origin/Referer, form content type, AJAX marker and an identifying NeoRate User-Agent. It sends no
-cookies, authorization, Cloudflare tokens, browser identifiers or session data and discards response
-cookies. The client has a replaceable transport, strict timeout/size/content-type/schema/rate checks,
-and no mock, market, competitor or reciprocal-direction fallback.
+quotes. Its native Node HTTPS transport sends form Content-Type, byte-accurate Content-Length, the
+required official calculator-page Referer and an
+identifying NeoRate User-Agent. Header isolation proved that Origin, Accept, Accept-Language and the
+AJAX marker are unnecessary and they are not sent. The quote route is explicitly Node-runtime-only
+because the transport uses `node:https`. The client sends no cookies, authorization, Cloudflare
+tokens, browser identifiers or session data and discards response cookies. It has strict timeout,
+size, null-body-status, content-type, schema and rate checks, with no mock, market, competitor or
+reciprocal-direction fallback.
 
 ### Plan display and ranking
 

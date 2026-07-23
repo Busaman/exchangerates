@@ -37,6 +37,7 @@ export type ZenQuoteClientErrorCode =
   | "NETWORK_ERROR"
   | "HTTP_403"
   | "HTTP_429"
+  | "HTTP_PROTOCOL_ERROR"
   | "HTTP_ERROR"
   | "INVALID_CONTENT_TYPE"
   | "RESPONSE_TOO_LARGE"
@@ -73,6 +74,25 @@ export function selectZenResponseHeaders(headers: IncomingHttpHeaders): Headers 
     if (typeof value === "string") selected.set(name, value);
   }
   return selected;
+}
+
+const upstreamNullBodyStatuses = new Set([204, 205, 304]);
+
+export function createZenTransportResponse(
+  status: number,
+  headers: IncomingHttpHeaders,
+  body: Buffer,
+): Response {
+  if (upstreamNullBodyStatuses.has(status)) {
+    throw new ZenQuoteClientError(
+      "HTTP_PROTOCOL_ERROR",
+      `ZEN returned unexpected null-body HTTP status ${status}.`,
+    );
+  }
+  return new Response(Uint8Array.from(body), {
+    status,
+    headers: selectZenResponseHeaders(headers),
+  });
 }
 
 export const nodeHttpsZenQuoteTransport: ZenQuoteTransport = async (request) => {
@@ -112,12 +132,17 @@ export const nodeHttpsZenQuoteTransport: ZenQuoteTransport = async (request) => 
             reject(new ZenQuoteClientError("NETWORK_ERROR", "ZEN response had no HTTP status."));
             return;
           }
-          resolve(
-            new Response(Buffer.concat(chunks), {
-              status: response.statusCode,
-              headers: selectZenResponseHeaders(response.headers),
-            }),
-          );
+          try {
+            resolve(
+              createZenTransportResponse(
+                response.statusCode,
+                response.headers,
+                Buffer.concat(chunks),
+              ),
+            );
+          } catch (error) {
+            reject(error);
+          }
         });
       },
     );
@@ -259,6 +284,12 @@ async function readValidatedJson(
   response: Response,
   maximumResponseBytes: number,
 ): Promise<unknown> {
+  if (upstreamNullBodyStatuses.has(response.status)) {
+    throw new ZenQuoteClientError(
+      "HTTP_PROTOCOL_ERROR",
+      `ZEN returned unexpected null-body HTTP status ${response.status}.`,
+    );
+  }
   if (response.status === 403) {
     throw new ZenQuoteClientError(
       "HTTP_403",
@@ -413,13 +444,9 @@ export class ZenPublicQuoteClient implements ZenQuoteClient {
           url: zenQuoteEndpoint,
           method: "POST",
           headers: {
-            Accept: "application/json, text/javascript, */*; q=0.01",
-            "Accept-Language": "hu-HU,hu;q=0.9",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            Origin: "https://www.zen.com",
             Referer: "https://www.zen.com/hu/online-valutavalto/",
             "User-Agent": "NeoRate server-side ZEN provider adapter",
-            "X-Requested-With": "XMLHttpRequest",
           },
           body,
           signal: controller.signal,

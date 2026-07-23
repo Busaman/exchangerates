@@ -11,6 +11,9 @@ const expectedEndpoint = "https://www.zen.com/landing_currencies.php";
 const timeoutMs = 5_000;
 const maximumResponseBytes = 256 * 1024;
 const maximumRedirects = 5;
+const requiredZenQuoteHeaders = {
+  Referer: "https://www.zen.com/hu/online-valutavalto/",
+};
 
 if (process.env.ZEN_INVESTIGATION_ENABLED !== "true") {
   console.error("Refusing live ZEN traffic without ZEN_INVESTIGATION_ENABLED=true.");
@@ -242,7 +245,13 @@ async function investigatePage(pageUrl, includeReverseQuote) {
   }
 }
 
-async function nativeHttpsControl({ sourceCurrency, targetCurrency, amount }) {
+async function nativeHttpsControl({
+  sourceCurrency,
+  targetCurrency,
+  amount,
+  profile = "MINIMAL",
+  additionalHeaders = {},
+}) {
   const body = new URLSearchParams({
     action: "change_currency",
     sourceCurrency,
@@ -257,14 +266,10 @@ async function nativeHttpsControl({ sourceCurrency, targetCurrency, amount }) {
       {
         method: "POST",
         headers: {
-          Accept: "application/json, text/javascript, */*; q=0.01",
-          "Accept-Language": "hu-HU,hu;q=0.9",
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           "Content-Length": Buffer.byteLength(body),
-          Origin: "https://www.zen.com",
-          Referer: "https://www.zen.com/hu/online-valutavalto/",
           "User-Agent": "NeoRate technical ZEN anonymous-session investigation",
-          "X-Requested-With": "XMLHttpRequest",
+          ...additionalHeaders,
         },
         timeout: timeoutMs,
       },
@@ -312,6 +317,13 @@ async function nativeHttpsControl({ sourceCurrency, targetCurrency, amount }) {
             }
           }
           resolve({
+            profile,
+            headerNames: [
+              "Content-Type",
+              "Content-Length",
+              "User-Agent",
+              ...Object.keys(additionalHeaders),
+            ],
             direction: `${sourceCurrency}-${targetCurrency}`,
             status: response.statusCode ?? null,
             contentType: contentType.split(";")[0] || "MISSING",
@@ -329,6 +341,13 @@ async function nativeHttpsControl({ sourceCurrency, targetCurrency, amount }) {
     request.on("timeout", () => request.destroy(new Error("TIMEOUT")));
     request.on("error", (error) =>
       resolve({
+        profile,
+        headerNames: [
+          "Content-Type",
+          "Content-Length",
+          "User-Agent",
+          ...Object.keys(additionalHeaders),
+        ],
         status: null,
         direction: `${sourceCurrency}-${targetCurrency}`,
         contentType: null,
@@ -347,14 +366,73 @@ for (const [index, page] of pagesToInvestigate.entries()) {
   results.push(await investigatePage(page, index === 2));
 }
 const nativeMatrix = [];
-for (const input of [
-  { sourceCurrency: "HUF", targetCurrency: "EUR", amount: "1000.00" },
-  { sourceCurrency: "HUF", targetCurrency: "EUR", amount: "9000.00" },
-  { sourceCurrency: "HUF", targetCurrency: "EUR", amount: "100000.00" },
-  { sourceCurrency: "EUR", targetCurrency: "HUF", amount: "10.00" },
-  { sourceCurrency: "EUR", targetCurrency: "HUF", amount: "1000.00" },
-]) {
-  nativeMatrix.push(await nativeHttpsControl(input));
+if (process.env.ZEN_HEADER_MATRIX_ONLY === "true") {
+  const headerProfiles = [
+    { profile: "MINIMAL", additionalHeaders: {} },
+    { profile: "MINIMAL_PLUS_JSON_ACCEPT", additionalHeaders: { Accept: "application/json" } },
+    { profile: "MINIMAL_PLUS_ORIGIN", additionalHeaders: { Origin: "https://www.zen.com" } },
+    {
+      profile: "MINIMAL_PLUS_REFERER",
+      additionalHeaders: requiredZenQuoteHeaders,
+    },
+    {
+      profile: "MINIMAL_PLUS_X_REQUESTED_WITH",
+      additionalHeaders: { "X-Requested-With": "XMLHttpRequest" },
+    },
+    {
+      profile: "MINIMAL_PLUS_ACCEPT_LANGUAGE",
+      additionalHeaders: { "Accept-Language": "hu-HU,hu;q=0.9" },
+    },
+    {
+      profile: "MINIMAL_PLUS_BROWSER_ACCEPT",
+      additionalHeaders: { Accept: "application/json, text/javascript, */*; q=0.01" },
+    },
+  ];
+  let successfulProfile = null;
+  for (const headerProfile of headerProfiles) {
+    const result = await nativeHttpsControl({
+      sourceCurrency: "HUF",
+      targetCurrency: "EUR",
+      amount: "1000.00",
+      ...headerProfile,
+    });
+    nativeMatrix.push(result);
+    if (result.validationResult === "PASS") {
+      successfulProfile = headerProfile;
+      break;
+    }
+  }
+  if (successfulProfile !== null) {
+    nativeMatrix.push(
+      await nativeHttpsControl({
+        sourceCurrency: "EUR",
+        targetCurrency: "HUF",
+        amount: "10.00",
+        profile: `${successfulProfile.profile}_REVERSE_CONFIRMATION`,
+        additionalHeaders: successfulProfile.additionalHeaders,
+      }),
+    );
+  }
+} else {
+  const fullMatrix = [
+    { sourceCurrency: "HUF", targetCurrency: "EUR", amount: "1000.00" },
+    { sourceCurrency: "HUF", targetCurrency: "EUR", amount: "9000.00" },
+    { sourceCurrency: "HUF", targetCurrency: "EUR", amount: "100000.00" },
+    { sourceCurrency: "EUR", targetCurrency: "HUF", amount: "10.00" },
+    { sourceCurrency: "EUR", targetCurrency: "HUF", amount: "1000.00" },
+  ];
+  const finalSmokeMatrix = [fullMatrix[0], fullMatrix[3]];
+  for (const input of process.env.ZEN_FINAL_MINIMAL_ONLY === "true"
+    ? finalSmokeMatrix
+    : fullMatrix) {
+    nativeMatrix.push(
+      await nativeHttpsControl({
+        ...input,
+        profile: "FINAL_MINIMAL_WITH_REQUIRED_REFERER",
+        additionalHeaders: requiredZenQuoteHeaders,
+      }),
+    );
+  }
 }
 
 console.log(
@@ -376,5 +454,9 @@ const validQuote =
   results.some((result) =>
     result.quotes.some((quote) => quote.bodyClassification === "JSON_QUOTE_ENVELOPE"),
   ) || nativeMatrix.some((quote) => quote.validationResult === "PASS");
-const invalidNativeQuote = nativeMatrix.some((quote) => quote.validationResult !== "PASS");
+const invalidNativeQuote =
+  process.env.ZEN_HEADER_MATRIX_ONLY === "true"
+    ? nativeMatrix.filter((quote) => quote.validationResult === "PASS").length !== 2 ||
+      nativeMatrix.at(-1)?.validationResult !== "PASS"
+    : nativeMatrix.some((quote) => quote.validationResult !== "PASS");
 process.exitCode = validQuote && !invalidNativeQuote ? 0 : 2;

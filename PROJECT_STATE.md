@@ -21,7 +21,8 @@ Last updated: 2026-07-19
   `ESTIMATED`. App verification required.
 - Transport: server-only native Node HTTPS behind a replaceable boundary, 2.5-second timeout, 64 KiB
   cap, no cookie/auth/browser identity, response cookies discarded, strict response and decimal
-  validation.
+  validation. The quote route is pinned to Node runtime. Final headers are Content-Type,
+  Content-Length, honest NeoRate User-Agent and the required official-page Referer only.
 - Failure behavior: numeric-field-free unavailable; no mock, market, reciprocal-opposite-direction,
   or competitor fallback. Cache: 60s fresh, 30s negative, 15m stale, single-flight.
 - Derived rates use NeoRate's documented `proRate / (1 + markup)` interpretation; this remains an
@@ -34,9 +35,10 @@ Last updated: 2026-07-19
   curl and native Node HTTPS from the same host returned HTTP 200 JSON without a preliminary GET,
   cookie, nonce or CSRF token. A five-request native matrix passed at 1,000/9,000/100,000 HUF and
   10/1,000 EUR. The response's `__cf_bm` cookie was discarded and was not required for success.
-- Protected Preview evidence (2026-07-19): deployment `dpl_AP1oHFDzU5N7CTZrQfyNhQVP7A3s` in Vercel
-  `iad1` returned fresh successful HUF→EUR and EUR→HUF NeoRate quotes. The temporary Preview-only
-  flag was removed immediately; production still has no ZEN environment flag.
+- Protected Preview evidence (2026-07-19): the minimal-header hardening deployment
+  `dpl_Bxrve4xsKiaAr5z7F2PquuepfuZ3` in Vercel `iad1` returned fresh successful HUF→EUR and EUR→HUF
+  NeoRate quotes. The temporary Preview-only flag was removed immediately; production still has no
+  ZEN environment flag.
 
 ## Validation state
 
@@ -46,7 +48,8 @@ missing/malformed/non-positive rates, malformed JSON, HTTP 403, timeout, exact a
 adapter contract compliance, numeric-field-free unavailability, feature-gate safety, and strict
 isolation of the untrusted Revolut/Wise `alternatives` rows. Plan-policy coverage also pins exact
 derived payout behavior, cache-boundary pricing windows, stale ranking exclusion, and fail-closed
-calculation errors.
+calculation errors. HTTP 204/304, empty HTTP 200, protocol-failure cache/single-flight release and the
+Node route runtime are covered deterministically.
 
 ## Plan quote policy
 

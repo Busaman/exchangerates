@@ -195,10 +195,12 @@ retrieved EUR→HUF quote.
 The client runs server-side through an injectable transport with a 2.5-second timeout, manual
 redirect handling, 64 KiB response limit, JSON content-type check, strict Zod field validation and
 decimal.js positivity, plausibility, request-amount and target/rate consistency checks. Its default
-transport is Node native HTTPS and sends the ordinary public-calculator JSON/AJAX accept, Hungarian
-language, form content type, official Origin/Referer and an identifying NeoRate User-Agent. It sends
-no cookies, authorization, Cloudflare clearance data, browser/session identifiers or personal data;
-all response cookies are discarded before parsing.
+transport is Node native HTTPS and sends form Content-Type, byte-accurate Content-Length, the
+official calculator-page Referer and an identifying NeoRate User-Agent. Origin, Accept,
+Accept-Language and `X-Requested-With` were proven unnecessary and are omitted. It sends no cookies,
+authorization, Cloudflare clearance data, browser/session identifiers or personal data; all response
+cookies are discarded before parsing. The versioned quote route is explicitly Node-runtime-only;
+Edge cannot host this `node:https` transport.
 
 The `alternatives` array is untrusted comparison content. Ignore it completely for normalization:
 ZEN-hosted Revolut and Wise values are not authoritative Revolut/Wise sources and cannot create,
@@ -207,6 +209,8 @@ replace or influence their provider rows. A 403, timeout, malformed/non-JSON bod
 unavailable result. No mock, neutral market rate, competitor value, inverse opposite direction or
 other fallback is allowed. The plan milestone adds amount/pair-specific fresh, negative,
 last-known-good stale and single-flight cache handling; stale observations never rank best.
+HTTP 204/205/304 are explicit protocol failures before a body-bearing Response can be constructed;
+an empty HTTP 200 is invalid JSON. These states never expose numeric quote fields.
 
 The source does not return a rate timestamp. Use retrieval time as both the observation timestamp
 and retrieval timestamp while preserving `rateTimestampBasis =
